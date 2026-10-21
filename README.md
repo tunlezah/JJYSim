@@ -2,6 +2,13 @@
 ## A JJY radio time signal simulator that runs on the ATOMS3 Lite and ATOM Lite/Matrix
 Note: the standard ATOMS3 (the non-Lite model) is not supported.
 
+### 2026-10-21 update
+- Rev.3/Rev.4: the GPIO0 workaround for unstable Wi-Fi (see 8(6)) now actually runs on the ATOM Lite/Matrix. Previously the board check ran too early to ever match.
+- Rev.3/Rev.4: the JJY pulse timing now stays correct after each NTP time adjustment. Previously an adjustment could occasionally leave the timing on a slot boundary, corrupting pulses until the next adjustment.
+- Rev.3/Rev.4: an RTC whose century bit was written by other software (e.g. M5Unified) is now read correctly, and RTC dates before 2017 are ignored.
+- Rev.3: on the ATOMS3 Lite, serial output can no longer stall the time signal when a connected PC stops reading the serial port.
+- Rev.4: the 40 kHz carrier now stays off until the time is valid.
+- Rev.4: likely fix for the ATOM Lite/Matrix LED not lighting up. It has not been tested on hardware yet, so Rev.3 is still recommended for those boards.
 ### 2025-08-15 update
 - Added Rev.4, which supports version 3.x of the M5Stack board package (Boards Manager). Rev.4 can be used with the ATOMS3 Lite.
 - Updated `BF-018ARev3.ino` to improve detection of the M5Atom Lite/Matrix.
@@ -63,7 +70,7 @@ Reference (Qiita, in Japanese): [Generating a simulated JJY time signal with Tic
 For details of the development environment and libraries, see the section for each revision above.
 
 ## 3. Hardware
-Transmitting the JJY signal requires an antenna. For experimenting, you can connect a wire about 1 m long between GPIO22 and GND, with a resistor of around 1 kΩ in series. Run the wire right next to the radio-controlled clock and the clock will pick up the magnetic field from the wire.
+Transmitting the JJY signal requires an antenna. For experimenting, you can connect a wire about 1 m long between the signal output pin (GPIO22 on the ATOM Lite/Matrix, GPIO5 on the ATOMS3 Lite) and GND, with a resistor of around 1 kΩ in series. Run the wire right next to the radio-controlled clock and the clock will pick up the magnetic field from the wire.
 
 - Demo using a wire and a 1 kΩ resistor (M5StickC)  
 YouTube: [JJY Simulator by M5StickC for a radio controlled clock](https://youtu.be/S_t3g5wqyh8)
