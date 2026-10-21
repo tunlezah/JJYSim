@@ -49,9 +49,9 @@ int Pcf8563::ReadTime(struct tm *tm_now)
   tm_now->tm_mday = Bcd2Int(m_reg[0x05] & 0x3f);
   tm_now->tm_wday = Bcd2Int(m_reg[0x06] & 0x07);      // 0:Sun, 1:Mon, .. 6:Sat
   tm_now->tm_mon  = Bcd2Int(m_reg[0x07] & 0x1f) - 1;  // tm month: 0..11
-  tm_now->tm_year = Bcd2Int(m_reg[0x08] & 0xff) + 100;  // 2000..2099: the century bit is ignored,
-                                                        // drivers disagree on its polarity
-  tm_now->tm_isdst = -1;  // let mktime() decide
+  tm_now->tm_year = Bcd2Int(m_reg[0x08] & 0xff);
+  if ((m_reg[0x07] & 0x80) != 0)
+    tm_now->tm_year += 100;  // century bit
   return 0;
 }
 

@@ -451,13 +451,10 @@ const int button_atoms3(41);  // GPIO41
 
 void setup()
 {
-#if defined (CONFIG_IDF_TARGET_ESP32)  // ATOM Lite/Matrix. Decided at compile time: M5.getBoard() is not valid before M5.begin()
-  // To avoid Wi-Fi issues, force GPIO0 to 0 while CH552 outputs 5V with its internal pullup.
+  // Wi-Fi issue caused by the CH552 on ATOM Lite/Matrix: M5.begin() applies M5Unified's own countermeasure
+  // (it drives GPIO0 HIGH), so the Rev.2 workaround of driving GPIO0 LOW is not needed here.
   // https://twitter.com/wakwak_koba/status/1553162622479974400
   // https://www.facebook.com/groups/154504605228235/posts/699719300706760/
-  pinMode(0, OUTPUT);
-  digitalWrite(0, LOW);
-#endif
 
   // M5Unified
   auto cfg = M5.config();
@@ -526,8 +523,8 @@ void setup()
   NtpBegin(time_zone, ntp_server);
 
 #if ARDUINO_USB_CDC_ON_BOOT && ARDUINO_USB_MODE
-  // ATOMS3 Lite: Serial is the USB Serial/JTAG port (HWCDC). TcoGen() prints from the Ticker task,
-  // so drop output rather than wait when no USB host is reading.
+  // ATOMS3 Lite: Serial is the USB Serial/JTAG port (HWCDC). TcoGen() prints from the Ticker task, so never
+  // wait: output that can't be queued at once (e.g. no USB host reading) is dropped instead of stalling the TCO.
   Serial.setTxTimeoutMs(0);
 #endif
 

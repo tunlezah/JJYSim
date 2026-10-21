@@ -74,7 +74,8 @@ bool SetTimeFromRtcx(const char* time_zone)
   setenv("TZ", time_zone, 1);
   tzset();  // assign timezone with setenv for mktime()
 
-  // year > 2016: getLocalTime() treats an older time as not set
+  // Accept only years after 2016: getLocalTime() treats older times as not set, and a 19xx year means the
+  // RTC was set by other software (opposite century bit, and often UTC), so wait for NTP instead.
   if (rtcx.ReadTime(&tm_init) == 0 && tm_init.tm_year > 116) {
     rtcx_valid = true;
     struct timeval tv = { mktime(&tm_init), 0 };
