@@ -10,7 +10,7 @@ Note: the standard ATOMS3 (the non-Lite model) is not supported.
 ### 2024-03-20 update
 - Fixed `BF-018ARev3.ino`: with the compiler warning level set higher than the default, the `%d` format specifiers in `Serial.printf()` calls were being reported as errors.
 ### 2024-03-12 update
-- Updated to BF-018ARev3.
+- Updated to `BF-018ARev3`.
 
 ### Rev.4
 - Folder: `BF-018ARev4`
@@ -20,7 +20,7 @@ Note: the standard ATOMS3 (the non-Lite model) is not supported.
 
 Confirmed working with:
 
-| Tool | Item | Version (tested 2025-08-15) |
+| Tool | Item | 2025-08-15 |
 |:-:|:-:|:-:|
 |Application| Arduino-IDE | 2.3.6 |
 |Boards Manager| M5Stack by M5Stack official | 3.2.3 |
@@ -37,7 +37,7 @@ Confirmed working with:
 
 Confirmed working with:
 
-| Tool | Item | Version (tested 2025-08-15) |
+| Tool | Item | 2025-08-15 |
 |:-:|:-:|:-:|
 |Application| Arduino-IDE | 2.3.6 |
 |Boards Manager| M5Stack by M5Stack official | 2.1.4 |
@@ -87,7 +87,7 @@ We have made a printed circuit board (PCB) that an M5Atom can be mounted on.
 
 ## 4. Operation
 
-- After power-on or a reset, the device first connects to Wi-Fi.
+- After power-on or a reset, the device first starts the Wi-Fi connection process.
 - Once the Wi-Fi connection is established, it gets the date and time via NTP and starts transmitting the time signal.
 - The built-in LED lets you see when the JJY signal is on. On the M5Atom Matrix, only LED 0 is used.  
 Rev.1 behaviour (for the Rev.2 changes, see section 8):  
@@ -124,12 +124,12 @@ The serial monitor lets you follow what the device is doing.
 ## 8. Miscellaneous
 
 ### (1) Wi-Fi connection recovery
-We have added recovery handling that responds to the Wi-Fi status. Recovery can take a long time: 5 minutes, 10 minutes, or until the Wi-Fi access point comes back. The aim is that you can simply leave the device alone and, before you know it, it will be working normally again. The recovery logic was worked out by trial and error and is not necessarily the best approach, so if you have any advice, please do let us know.
+We have added recovery handling that responds to the Wi-Fi status. Recovery can take a long time, for example 5 or 10 minutes, or until the Wi-Fi access point comes back. The aim is that you can simply leave the device alone and, before you know it, it will be working normally again. The recovery logic was worked out by trial and error and is not necessarily the best approach, so if you have any advice, please do let us know.
 
 Reference (Qiita, in Japanese): [Trial and error with recovery handling for ESP32 Wi-Fi and tzapu/WiFiManager](https://qiita.com/BotanicFields/items/8a73101a8bfe51e57f67)
 
 ### (2) Using an RTC
-Even if Wi-Fi is temporarily unavailable at power-on or after a reset, the device still transmits the JJY signal, based on the time held in the RTC (real-time clock). To make this possible, the RTC's time is updated whenever NTP synchronises the clock, so the RTC always holds the current time as of its most recent update. To use this feature, connect an RTC unit to the M5Atom's GROVE port. In our experience, an RTC unit connected with a 20 cm GROVE cable was unreliable, whereas with a 10 cm cable it worked reliably.
+Even if Wi-Fi is temporarily unavailable at power-on or after a reset, the device still transmits the JJY signal, based on the time held in the RTC (real-time clock). To make this possible, the RTC's time is updated whenever the time is synchronised via NTP, and the RTC keeps the current time based on its most recent update. To use this feature, connect an RTC unit to the M5Atom's GROVE port. In our experience, an RTC unit connected with a 20 cm GROVE cable was unreliable, whereas with a 10 cm cable it worked reliably.
 
 Examples of RTC units you can use:
 - [Real-Time Clock (RTC) Unit with HYM8563 for M5Stack](https://www.switch-science.com/catalog/7482/) (Switch Science, in Japanese)
@@ -144,7 +144,7 @@ Reference (Qiita, in Japanese): [Catching NTP time synchronisation on the ESP32 
 To switch to a different Wi-Fi access point, you need to change the SSID/key settings. If the old access point has already been removed, WiFiManager's configuration portal starts automatically. If the old access point is still running, first erase the SSID/key stored in EEPROM; you can then enter new settings. To erase the SSID/key from EEPROM, hold down the button, press the reset button, and keep holding the button until the LED lights up green. At that point, the "configuration portal" is running.
 
 ### (4) Using 40 kHz
-The real JJY signal is broadcast at 40 kHz from the transmitting station in Fukushima Prefecture and at 60 kHz from the station in Saga Prefecture. This project uses a PWM frequency of 40 kHz. The ESP32 cannot generate exactly 60 kHz, but it can generate a frequency very close to it. In eastern Japan, setting the simulated JJY signal to 60 kHz lets you tell whether a clock has synchronised to the real signal from Fukushima or to the simulated one. To set the simulated signal to 60 kHz, change `jjy_frequency` in `BF-018ARevN.ino` to 60000.
+The real JJY signal is broadcast at 40 kHz from the transmitting station in Fukushima Prefecture and at 60 kHz from the station in Saga Prefecture. This project uses a PWM frequency of 40 kHz. The ESP32 cannot generate exactly 60 kHz, but it can generate a frequency quite close to it. In eastern Japan, setting the simulated JJY signal to 60 kHz lets you tell whether a clock has synchronised to the real signal from Fukushima or to the simulated one. To set the simulated signal to 60 kHz, change `jjy_frequency` in `BF-018ARevN.ino` to 60000.
 
 ```
 // for TCO(Time Code Output)
@@ -156,7 +156,7 @@ Reference (Qiita, in Japanese): [Using an Excel sheet to work out the resolution
 ### (5) LED indications
 
 - Wi-Fi connection status  
-Any status other than WL_CONNECTED is shown by the red LED, either lit steadily or blinking.
+Any status other than `WL_CONNECTED` is shown by the red LED, either lit steadily or blinking.
 - While the config portal is running, the green LED is lit.
 - While waiting for NTP synchronisation, the green LED blinks.
 
@@ -169,22 +169,22 @@ Details: [JJY simulator status indications]
 | 3 | NTP sync complete, or RTC time is valid | - | - | Off | - | Shows the local time |
 | 4 | Waiting for NTP sync | - | - | Slow blink | - | Shows "Localtime not ready" |
 | 5 | Wi-Fi SSID/key entry (config portal) in progress | - | - | On | - | Shows the config portal's SSID and IP address |
-| 6 | Wi-Fi connected | WL_CONNECTED | Off | - | - | Shows the SSID of the connected network and the device's own IP address |
-| 7 | Wi-Fi access point not found | WL_NO_SSID_AVAIL | Slow blink | - | - | Shows WL_NO_SSID_AVAIL |
-| 8 | Wi-Fi disconnected | WL_DISCONNECTED | Fast blink | - | - | Shows WL_DISCONNECTED |
-| 9 | Wi-Fi status changing | WL_CONNECTION_LOST, WL_IDLE_STATE, etc. | On | - | - | Shows WL_CONNECTION_LOST, WL_IDLE_STATE, etc. |
+| 6 | Wi-Fi connected | `WL_CONNECTED` | Off | - | - | Shows the SSID of the connected network and the device's own IP address |
+| 7 | Wi-Fi access point not found | `WL_NO_SSID_AVAIL` | Slow blink | - | - | Shows `WL_NO_SSID_AVAIL` |
+| 8 | Wi-Fi disconnected | `WL_DISCONNECTED` | Fast blink | - | - | Shows `WL_DISCONNECTED` |
+| 9 | Wi-Fi status changing | `WL_CONNECTION_LOST`, `WL_IDLE_STATE`, etc. | On | - | - | Shows `WL_CONNECTION_LOST`, `WL_IDLE_STATE`, etc. |
 
-When the red, green and blue LEDs are lit or blinking at the same time, they can combine to show colours such as yellow or purple. For example, when the device is waiting for the Wi-Fi access point (WL_NO_SSID_AVAIL) and also waiting for NTP sync, the LED blinks slowly in yellow.
+When the red, green and blue LEDs are lit or blinking at the same time, they can combine to show colours such as yellow or purple. For example, when the device is waiting for the Wi-Fi access point (`WL_NO_SSID_AVAIL`) and also waiting for NTP sync, the LED blinks slowly in yellow.
 
 [Original chart, in Japanese]  
 <img src="./wifi_status.jpg">
 
 ### (6) Workaround for unstable Wi-Fi connections on the M5Atom
 
-The M5Atom has a problem where its Wi-Fi output power drops and the connection becomes unstable. Hopefully this is being addressed with improved firmware for the CH552 chip that handles USB-to-serial conversion, but many units that have already shipped do not have the fix. As a workaround, code that drives GPIO0 LOW has been added at the start of setup().
+The M5Atom has a problem where its Wi-Fi output power drops and the connection becomes unstable. Hopefully this is being addressed with improved firmware for the CH552 chip that handles USB-to-serial conversion, but many units that have already shipped do not have the fix. As a workaround, code that drives GPIO0 LOW has been added at the start of `setup()`.
 
 #### References
 
-- [Twitter: @wakwak_koba, 8:36 AM, 30 July 2022](https://twitter.com/wakwak_koba/status/1553162622479974400)
+- [Twitter: @wakwak_koba, 8:36 AM JST, 30 July 2022](https://twitter.com/wakwak_koba/status/1553162622479974400) (in Japanese)
 - [M5Atom CH552 firmware update](https://togetter.com/li/1807623) (Togetter, in Japanese)
-- [Bugs and measures for M5Stack ATOM](https://macsbug.wordpress.com/2021/10/10/bugs-and-measures-for-m5stack-atom/)
+- [Bugs and measures for M5Stack ATOM](https://macsbug.wordpress.com/2021/10/10/bugs-and-measures-for-m5stack-atom/) (in Japanese)
