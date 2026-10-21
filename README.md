@@ -1,26 +1,26 @@
 # JJY Simulator for M5Atom
-## ATOMS3 Lite, ATOM Lite/Matrixで動作する標準電波(JJY)シミュレータ
-※ ATOMS3(無印)には対応しておりません。
+## A JJY radio time signal simulator that runs on the ATOMS3 Lite and ATOM Lite/Matrix
+Note: the standard ATOMS3 (the non-Lite model) is not supported.
 
-### 2025/8/15 修正
-- Rev.4を追加しました。M5Stack 3.x(Boards Manager)に対応しました。Rev.4はATOMS3 Liteで使用いただけます。
-- BF-018ARev3.inoを修正しました。M5Atom Lite/Matrixの判定を改善しました。
-### 2025/3/03 修正
-- BF-018ARev3.ino を修正しました。M5Unifiedの仕様変更に対応しcfg.serial_baudrateの指定を追加しました。
-### 2024/3/20 修正
-- BF-018ARev3.ino を修正しました。コンパイラ警告レベルをデフォルトよりも上げると、Serial.printf()の%d指定でエラーを検出していました。
-### 2024/3/12 修正
-- BF-018ARev3にアップデートしました。
+### 2025-08-15 update
+- Added Rev.4, which supports version 3.x of the M5Stack board package (Boards Manager). Rev.4 can be used with the ATOMS3 Lite.
+- Updated `BF-018ARev3.ino` to improve detection of the M5Atom Lite/Matrix.
+### 2025-03-03 update
+- Updated `BF-018ARev3.ino` to adapt to a specification change in M5Unified: `cfg.serial_baudrate` is now set explicitly.
+### 2024-03-20 update
+- Fixed `BF-018ARev3.ino`: with the compiler warning level set higher than the default, the `%d` format specifiers in `Serial.printf()` calls were being reported as errors.
+### 2024-03-12 update
+- Updated to `BF-018ARev3`.
 
 ### Rev.4
-- フォルダ: BF-018ARev4
-- Boards Managerで、M5Stack 3.xを選択してください。
-- ATOMS3 Liteで使用いただけます。
-- M5Atom Lite/Matrixは、現状LEDが点灯しない不具合がありますので、Rev.3をお使いください。
+- Folder: `BF-018ARev4`
+- In the Boards Manager, install version 3.x of the M5Stack board package.
+- Works with the ATOMS3 Lite.
+- On the M5Atom Lite/Matrix there is currently a bug that stops the LED from lighting up, so please use Rev.3 on those boards.
 
-動作確認状況：
+Confirmed working with:
 
-| tool | item | 2025/8/15 |
+| Tool | Item | 2025-08-15 |
 |:-:|:-:|:-:|
 |Application| Arduino-IDE | 2.3.6 |
 |Boards Manager| M5Stack by M5Stack official | 3.2.3 |
@@ -30,14 +30,14 @@
 |Library Manager| WiFiManager by tzapu | 2.0.17 |
 
 ### Rev.3
-- フォルダ: BF-018ARev3
-- Boards Managerで、M5Stack 2.xを選択してください。
-- Library Managerで、M5Unified 0.2.5, M5GFX 0.2.6を選択してください。
-- M5Atom Lite/Matrix, ATOMS3 Liteで使用いいただけます。
+- Folder: `BF-018ARev3`
+- In the Boards Manager, install version 2.x of the M5Stack board package.
+- In the Library Manager, install M5Unified 0.2.5 and M5GFX 0.2.6.
+- Works with the M5Atom Lite/Matrix and the ATOMS3 Lite.
 
-動作確認状況：
+Confirmed working with:
 
-| tool | item | 2025/8/15 |
+| Tool | Item | 2025-08-15 |
 |:-:|:-:|:-:|
 |Application| Arduino-IDE | 2.3.6 |
 |Boards Manager| M5Stack by M5Stack official | 2.1.4 |
@@ -47,130 +47,144 @@
 |Library Manager| WiFiManager by tzapu | 2.0.17 |
 
 ### Rev.2
-- フォルダ: BF-018ARev2
-- Rev.3以降をご使用ください。
+- Folder: `BF-018ARev2`
+- Please use Rev.3 or later.
 
-### Rev.1(無印)
-- フォルダ: BF-018A
-- Rev.3以降をご使用ください。
+### Rev.1 (original release)
+- Folder: `BF-018A`
+- Please use Rev.3 or later.
 
-## 1. 概要
-　M5Atomで電波時計のためのJJY信号もどきを生成します。JJY信号が届かないところにある電波時計の時刻合わせができます。Wifi経由のNTPで時刻を取得し、GPIOからJJY信号を出力します。
+## 1. Overview
+This project uses an M5Atom to generate a simulated JJY signal for radio-controlled clocks, so you can set the time on clocks that are out of range of the real JJY broadcast. It gets the time via NTP over Wi-Fi and outputs the JJY signal on a GPIO pin.
 
-参考: Qiita [標準電波 JJY もどきを M5StickC / M5Atom の Ticker で生成する](https://qiita.com/BotanicFields/items/a78c80f947388caf0d36)
+Reference (Qiita, in Japanese): [Generating a simulated JJY time signal with Ticker on the M5StickC / M5Atom](https://qiita.com/BotanicFields/items/a78c80f947388caf0d36)
 
-## 2. ソフトウェア
-　開発環境やライブラリの情報は、各Rev.の欄を参照ください。
+## 2. Software
+For details of the development environment and libraries, see the section for each revision above.
 
-## 3. ハードウェア
-　JJY信号の送信にはアンテナが必要です。GPIO22とGND間に1kΩ程度の抵抗を途中に挟んで1m程度の電線を接続して実験できます。電線を電波時計の至近距離に這わせると電波時計が電線からの磁界を受信してくれます。
+## 3. Hardware
+Transmitting the JJY signal requires an antenna. For experimenting, you can connect a wire about 1 m long between GPIO22 and GND, with a resistor of around 1 kΩ in series. Run the wire right next to the radio-controlled clock and the clock will pick up the magnetic field from the wire.
 
-- 電線と1kΩの抵抗による動作例(M5StickC)  
-Youtube [JJY Simulator by M5StickC for a radio controlled clock](https://youtu.be/S_t3g5wqyh8)
+- Demo using a wire and a 1 kΩ resistor (M5StickC)  
+YouTube: [JJY Simulator by M5StickC for a radio controlled clock](https://youtu.be/S_t3g5wqyh8)
 
-### 3.1 プリント基板
-　M5Atomを搭載可能なプリント基板を製作しました。
+### 3.1 Printed circuit board
+We have made a printed circuit board (PCB) that an M5Atom can be mounted on.
 
-- [回路図](./bf-018a_scm.pdf)
+- [Schematic](./bf-018a_scm.pdf)
 
-- プリント基板  
+- The PCB  
 [PCB_front]  
 <img src="./BF-018A_front.JPG" width=300>
 
-- M5Atom Liteを搭載  
+- With an M5Atom Lite mounted  
 [PCB_with_M5AtomLite]  
 <img src="./BF-018A_M5AtomLite.JPG" width=300>
 
-- M5Atom Matrixを搭載  
+- With an M5Atom Matrix mounted  
 [PCB_with_M5AtomMatrix]  
 <img src="./BF-018A_M5AtomMatrix.JPG" width=300>
 
-## 4. 動作
+## 4. Operation
 
-- 電源投入またはリセット後、まずWifi接続の動作に入ります
-- Wifi接続が完了後、NTPで日時を取得し、標準信号の送出を開始します
-- JJY信号オンを内蔵LEDでモニターできます。M5Atom Matrixでは、0番のLEDのみを使用しています  
-Rev1の動作(Rev2は「8. Rev.2変更内容」を参照):  
-  >青: JJY信号の送出中を示します  
-赤: NTPによる時刻取得に失敗すると点灯します  
-黄: Wifi接続が切れると点灯します（赤＋緑）
+- After power-on or a reset, the device first starts the Wi-Fi connection process.
+- Once the Wi-Fi connection is established, it gets the date and time via NTP and starts transmitting the time signal.
+- The built-in LED lets you see when the JJY signal is on. On the M5Atom Matrix, only LED 0 is used.  
+Rev.1 behaviour (for the Rev.2 changes, see section 8):  
+  >Blue: the JJY signal is being transmitted  
+Red: lights up when the device fails to get the time via NTP  
+Yellow: lights up when the Wi-Fi connection is lost (red + green)
 
-動作例  
-- YouTube [BF-018A: JJY Antenna for M5Atom](https://www.youtube.com/watch?v=4Soobp9k9r0)
+Demo  
+- YouTube: [BF-018A: JJY Antenna for M5Atom](https://www.youtube.com/watch?v=4Soobp9k9r0)
 
-## 5. Wifi 接続
-　tzapu/WiFiManagerを使用しています。使い方は、tzapu/WiFiManagerの説明を参照ください。
+## 5. Wi-Fi connection
+Wi-Fi setup is handled by tzapu/WiFiManager. For details on how to use it, see the tzapu/WiFiManager documentation.
 
-参考: GitHub [tzapu/WiFiManager](https://github.com/tzapu/WiFiManager)
+Reference: GitHub [tzapu/WiFiManager](https://github.com/tzapu/WiFiManager)
 
-### 大まかな流れ:
-> (1)	M5Atomが、まずは前回接続したアクセスポイントに接続を試みる  
-(2) 接続できない場合、M5Atom自身がアクセスポイントとなりスマートホン等からの接続を待つ
->> (2-1) スマートホン等で、アクセスポイントとなったM5Atomに接続する  
-※ SSID: Chip IDに基づく名前、password/key: なし  
-(2-2) ブラウザでIPアドレス192.168.4.1を開く  
-(2-3) M5Atomが接続すべきSSID/keyを入力する
+### Overview of the process:
+> (1)	The M5Atom first tries to connect to the access point it connected to last time.  
+(2) If it cannot connect, the M5Atom becomes an access point itself and waits for a smartphone or similar device to connect to it.
+>> (2-1) On your smartphone (or similar device), connect to the access point that the M5Atom has created.  
+Note: the SSID is a name based on the chip ID, and there is no password/key.  
+(2-2) Open the IP address 192.168.4.1 in a web browser.  
+(2-3) Enter the SSID/key of the network the M5Atom should connect to.
 
->(3)	M5Atomが指定されたSSID/keyでWi-Fiに接続する
+>(3)	The M5Atom connects to Wi-Fi using the SSID/key you entered.
 ## 5. LCD
-　M5Atom版では外付けLCDを使用していません。
+The M5Atom version does not use an external LCD.
 
 ## 6. LED
-　ボタンでLEDによるモニターをオン・オフできます。
+The button turns LED monitoring on and off.
 
-## 7. シリアルモニタ
-　動作の状況を監視できます。
+## 7. Serial monitor
+The serial monitor lets you follow what the device is doing.
 
-## 8. その他
+## 8. Miscellaneous
 
-### (1) WiFi接続についてのリカバリ処理
-　WiFiのステータスに応じたリカバリ処理を追加しました。リカバリ処理には5分、10分、あるいはWiFiアクセスポイントが回復するまでなど、長時間を要する場合があります。放置して、いつの間にか正常動作をしていることを目指しています。リカバリ処理の内容は試行錯誤に基づくもので、必ずしもベストではありません。アドバイスなどありましたら是非お知らせください。
+### (1) Wi-Fi connection recovery
+We have added recovery handling that responds to the Wi-Fi status. Recovery can take a long time, for example 5 or 10 minutes, or until the Wi-Fi access point comes back. The aim is that you can simply leave the device alone and, before you know it, it will be working normally again. The recovery logic was worked out by trial and error and is not necessarily the best approach, so if you have any advice, please do let us know.
 
-参考: Qiita [ESP32のWiFiおよびtzapu/WiFiManagerにおいて回復処理を試行錯誤した](https://qiita.com/BotanicFields/items/8a73101a8bfe51e57f67)
+Reference (Qiita, in Japanese): [Trial and error with recovery handling for ESP32 Wi-Fi and tzapu/WiFiManager](https://qiita.com/BotanicFields/items/8a73101a8bfe51e57f67)
 
-### (2)  RTCの利用
-　電源投入時やリセット時においてWiFiが一時的に接続できないときでも、RTCの時刻に基づいてJJY信号を発信します。このための準備として、NTPの時刻同期のタイミングでRTCの時刻をアップデートします。RTCは、直近のアップデートに基づいた現在時刻を保持しています。M5AtomのGROVEポートにRTCユニットを接続して利用できます。RTCユニットを20cmのGROVEケーブルで接続した場合は動作が不安定になり、10cmのケーブルで安定した経験があります。
+### (2) Using an RTC
+Even if Wi-Fi is temporarily unavailable at power-on or after a reset, the device still transmits the JJY signal, based on the time held in the RTC (real-time clock). To make this possible, the RTC's time is updated whenever the time is synchronised via NTP, and the RTC keeps the current time based on its most recent update. To use this feature, connect an RTC unit to the M5Atom's GROVE port. In our experience, an RTC unit connected with a 20 cm GROVE cable was unreliable, whereas with a 10 cm cable it worked reliably.
 
-利用可能なRTCユニットの例
-- [M5Stack用HYM8563搭載 リアルタイムクロック（RTC）ユニット](https://www.switch-science.com/catalog/7482/)
-- [M5 用リアルタイムクロック (RTC) 基板](https://www.switch-science.com/catalog/7170/)
+Examples of RTC units you can use:
+- [Real-Time Clock (RTC) Unit with HYM8563 for M5Stack](https://www.switch-science.com/catalog/7482/) (Switch Science, in Japanese)
+- [Real-Time Clock (RTC) Board for M5](https://www.switch-science.com/catalog/7170/) (Switch Science, in Japanese)
 
-参考: Qiita [ESP32 において NTP の時刻同期を捕まえて RTC を更新する](https://qiita.com/BotanicFields/items/f1e28af5a63e4ccf7023)
+Reference (Qiita, in Japanese): [Catching NTP time synchronisation on the ESP32 to update an RTC](https://qiita.com/BotanicFields/items/f1e28af5a63e4ccf7023)
 
-[RTCモジュール]  
+[RTC module]  
 <img src="./RTC.jpeg" width=300>
 
-### (3) SSID/Keyを消去する操作
-　接続先のWiFiアクセスポイントを変更する場合、SSID/Keyの設定を変更します。古いアクセスポイントが撤去済の場合、WiFiManagerのconfigration portalが自動的に起動します。古いアクセスポイントが稼働中の場合、まずEEPROMに保存されたSSID/Keyの消去することで新規設定ができます。EEPROMのSSID/Keyを消去するには、ボタンを押しながらリセットボタンを押しLEDが緑色に点灯するまでボタンを押し続けます。"configuration portal"が起動しています。
+### (3) Erasing the stored SSID/key
+To switch to a different Wi-Fi access point, you need to change the SSID/key settings. If the old access point has already been removed, WiFiManager's configuration portal starts automatically. If the old access point is still running, first erase the SSID/key stored in EEPROM; you can then enter new settings. To erase the SSID/key from EEPROM, hold down the button, press the reset button, and keep holding the button until the LED lights up green. At that point, the "configuration portal" is running.
 
-### (4) 40kHzを使用
-　JJY信号は、福島県の送信所から40kHz、佐賀県の送信所から60kHzで送信されています。PWM周波数は40kHzとしています。ESP32では60KHzぴったりの信号を生成できませんが、かなり近い周波数で生成できます。東日本の場合、疑似JJY信号を60kHzとすることで、福島からの信号に同期したのか、疑似信号に同期したのかを区別することができます。疑似信号を60kHzに設定するには、BF-018ARevN.inoのjjy_frequencyを60000に修正ください。
+### (4) Using 40 kHz
+The real JJY signal is broadcast at 40 kHz from the transmitting station in Fukushima Prefecture and at 60 kHz from the station in Saga Prefecture. This project uses a PWM frequency of 40 kHz. The ESP32 cannot generate exactly 60 kHz, but it can generate a frequency quite close to it. In eastern Japan, setting the simulated JJY signal to 60 kHz lets you tell whether a clock has synchronised to the real signal from Fukushima or to the simulated one. To set the simulated signal to 60 kHz, change `jjy_frequency` in `BF-018ARevN.ino` to 60000.
 
 ```
 // for TCO(Time Code Output)
 const uint32_t jjy_frequency(40000); // 40kHz(east), 60kHz(west)
 ```
 
-参考: Qiita [ESP32においてLEDC(LED PWM Controller)に設定する分解能をExcelシートで検討する](https://qiita.com/BotanicFields/items/e74c449c0bef0820fcd1)
+Reference (Qiita, in Japanese): [Using an Excel sheet to work out the resolution setting for the ESP32's LEDC (LED PWM Controller)](https://qiita.com/BotanicFields/items/e74c449c0bef0820fcd1)
 
-### (5) LED表示
+### (5) LED indications
 
-- WiFiの接続状態を表示  
-WL_CONNECTED以外の場合、赤LEDの点灯・点滅で表示
-- config portalの起動時、緑LEDを点灯
-- NTP同期待ち時、緑LEDを点滅
+- Wi-Fi connection status  
+Any status other than `WL_CONNECTED` is shown by the red LED, either lit steadily or blinking.
+- While the config portal is running, the green LED is lit.
+- While waiting for NTP synchronisation, the green LED blinks.
 
-詳細: [JJYシミュレータの状態表示]<img src="./wifi_status.jpg">
+Details: [JJY simulator status indications]
 
-### (6) M5AtomのWi-Fi接続が不安定となる問題への対策
+| # | State | Wi-Fi status | M5Atom LED: red | M5Atom LED: green | M5Atom LED: blue | M5StickC / M5StickC Plus: LCD |
+|:-:|:--|:--|:-:|:-:|:-:|:--|
+| 1 | Transmitting the JJY signal | - | - | - | Blinking | Red LED blinking |
+| 2 | JJY signal stopped | - | - | - | Off | Red LED off |
+| 3 | NTP sync complete, or RTC time is valid | - | - | Off | - | Shows the local time |
+| 4 | Waiting for NTP sync | - | - | Slow blink | - | Shows "Localtime not ready" |
+| 5 | Wi-Fi SSID/key entry (config portal) in progress | - | - | On | - | Shows the config portal's SSID and IP address |
+| 6 | Wi-Fi connected | `WL_CONNECTED` | Off | - | - | Shows the SSID of the connected network and the device's own IP address |
+| 7 | Wi-Fi access point not found | `WL_NO_SSID_AVAIL` | Slow blink | - | - | Shows `WL_NO_SSID_AVAIL` |
+| 8 | Wi-Fi disconnected | `WL_DISCONNECTED` | Fast blink | - | - | Shows `WL_DISCONNECTED` |
+| 9 | Wi-Fi status changing | `WL_CONNECTION_LOST`, `WL_IDLE_STATE`, etc. | On | - | - | Shows `WL_CONNECTION_LOST`, `WL_IDLE_STATE`, etc. |
 
-　M5AtomにはWi-Fiの出力が低下し接続が不安定になる問題があります。USBシリアル変換用のCH552のファームウェア改善による対策が進んでいると期待されますが、未対策の既出荷品も多い状況です。対策としてGPIO0にLOWを出力する処理をsetup()の冒頭に追加しました。
+When the red, green and blue LEDs are lit or blinking at the same time, they can combine to show colours such as yellow or purple. For example, when the device is waiting for the Wi-Fi access point (`WL_NO_SSID_AVAIL`) and also waiting for NTP sync, the LED blinks slowly in yellow.
 
-#### 参考情報
+[Original chart, in Japanese]  
+<img src="./wifi_status.jpg">
 
-- [twitter @wakwak_koba 午前8:36 2022年7月30日](https://twitter.com/wakwak_koba/status/1553162622479974400)
-- [M5Atom CH552 FW更新](https://togetter.com/li/1807623)
-- [Bugs and measures for M5Stack ATOM](https://macsbug.wordpress.com/2021/10/10/bugs-and-measures-for-m5stack-atom/)
+### (6) Workaround for unstable Wi-Fi connections on the M5Atom
 
+The M5Atom has a problem where its Wi-Fi output power drops and the connection becomes unstable. Hopefully this is being addressed with improved firmware for the CH552 chip that handles USB-to-serial conversion, but many units that have already shipped do not have the fix. As a workaround, code that drives GPIO0 LOW has been added at the start of `setup()`.
 
-以上
+#### References
+
+- [Twitter: @wakwak_koba, 8:36 AM JST, 30 July 2022](https://twitter.com/wakwak_koba/status/1553162622479974400) (in Japanese)
+- [M5Atom CH552 firmware update](https://togetter.com/li/1807623) (Togetter, in Japanese)
+- [Bugs and measures for M5Stack ATOM](https://macsbug.wordpress.com/2021/10/10/bugs-and-measures-for-m5stack-atom/) (in Japanese)
