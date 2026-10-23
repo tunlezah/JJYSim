@@ -4,6 +4,13 @@ Note: the standard ATOMS3 (the non-Lite model) is not supported.
 
 ### 2026-10-23 update
 - Added Rev.5, which adds a web UI: check the simulator's status and change its settings from a browser. See section 9.
+### 2026-10-21 update
+- Rev.3/Rev.4: the JJY pulse timing now stays correct after each NTP time adjustment. Previously an adjustment could occasionally leave the timing on a slot boundary, corrupting pulses until the next adjustment.
+- Rev.3/Rev.4: RTC times before 2017 are now ignored. An RTC last set by other software (e.g. M5Unified) used to produce a garbage clock; the device now waits for NTP instead.
+- Rev.3: on the ATOMS3 Lite, serial output can no longer stall the time signal when a connected PC stops reading the serial port.
+- Rev.4: the 40 kHz carrier now stays off until the time is valid.
+- Rev.4: likely fix for the ATOM Lite/Matrix LED not lighting up. It has not been tested on hardware yet, so Rev.3 is still recommended for those boards.
+- Rev.3/Rev.4: removed the GPIO0 workaround code, which never ran. `M5.begin()` already applies M5Unified's own countermeasure (see 8(6)).
 ### 2025-08-15 update
 - Added Rev.4, which supports version 3.x of the M5Stack board package (Boards Manager). Rev.4 can be used with the ATOMS3 Lite.
 - Updated `BF-018ARev3.ino` to improve detection of the M5Atom Lite/Matrix.
@@ -16,7 +23,7 @@ Note: the standard ATOMS3 (the non-Lite model) is not supported.
 
 ### Rev.5
 - Folder: `BF-018ARev5`
-- Rev.4 plus a web UI (see section 9). It also includes the code-audit fixes for Rev.4: the pulse timing stays correct after NTP time adjustments, the carrier stays off until the time is valid, RTC times before 2017 are ignored, and the likely fix for the ATOM Lite/Matrix LED.
+- Rev.4 (with the 2026-10-21 fixes) plus a web UI (see section 9). As in Rev.3, serial output on the ATOMS3 Lite can't stall the time signal when a connected PC stops reading the serial port.
 - ATOMS3 Lite: install version 3.x of the M5Stack board package, as for Rev.4.
 - ATOM Lite/Matrix: version 2.x of the board package (with the Rev.3 library versions) or version 3.x.
 - No extra libraries are needed: the web server, mDNS and settings storage come with the board package.
@@ -84,7 +91,7 @@ Reference (Qiita, in Japanese): [Generating a simulated JJY time signal with Tic
 For details of the development environment and libraries, see the section for each revision above.
 
 ## 3. Hardware
-Transmitting the JJY signal requires an antenna. For experimenting, you can connect a wire about 1 m long between GPIO22 and GND, with a resistor of around 1 kΩ in series. Run the wire right next to the radio-controlled clock and the clock will pick up the magnetic field from the wire.
+Transmitting the JJY signal requires an antenna. For experimenting, you can connect a wire about 1 m long between the signal output pin (GPIO22 on the ATOM Lite/Matrix, GPIO5 on the ATOMS3 Lite) and GND, with a resistor of around 1 kΩ in series. Run the wire right next to the radio-controlled clock and the clock will pick up the magnetic field from the wire.
 
 - Demo using a wire and a 1 kΩ resistor (M5StickC)  
 YouTube: [JJY Simulator by M5StickC for a radio controlled clock](https://youtu.be/S_t3g5wqyh8)
@@ -202,7 +209,7 @@ When the red, green and blue LEDs are lit or blinking at the same time, they can
 
 ### (6) Workaround for unstable Wi-Fi connections on the M5Atom
 
-The M5Atom has a problem where its Wi-Fi output power drops and the connection becomes unstable. Hopefully this is being addressed with improved firmware for the CH552 chip that handles USB-to-serial conversion, but many units that have already shipped do not have the fix. As a workaround, code that drives GPIO0 LOW has been added at the start of `setup()`.
+The M5Atom has a problem where its Wi-Fi output power drops and the connection becomes unstable. Hopefully this is being addressed with improved firmware for the CH552 chip that handles USB-to-serial conversion, but many units that have already shipped do not have the fix. As a workaround, code that drives GPIO0 LOW has been added at the start of `setup()`. In Rev.3 and later, M5Unified's `M5.begin()` handles this instead, by driving GPIO0 HIGH.
 
 #### References
 

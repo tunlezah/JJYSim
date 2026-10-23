@@ -187,7 +187,7 @@ void WifiConfigModeCallback(WiFiManager *wm)
 //..:....1....:....2....:....3....:....4....:....5....:....6....:....7..
 // TCO(Time Code Output)
 Ticker tk;
-const int ticker_interval_ms(100);  // 100ms
+const int ticker_interval_ms(10);  // poll every 10ms, TcoGen() acts once per 100ms slot
 const int marker(0xff);  // marker code TcoValue() returns
 
 // PWM for TCO signal
@@ -205,18 +205,11 @@ void TcoInit()
     ledc_pin = ledc_pin_atoms3;
   }
   Serial.printf("ledcAttach result= %d\n", ledcAttach(ledc_pin, ledc_frequency, ledc_resolution));
-  Serial.printf("ledcWrite result= %d\n", ledcWrite(ledc_pin, ledc_duty_on));
+  Serial.printf("ledcWrite result= %d\n", ledcWrite(ledc_pin, ledc_duty_off));  // carrier off until the time is valid
   Serial.printf("pin= %u, duty= %lu, freq= %lu\n", ledc_pin, ledcRead(ledc_pin), ledcReadFreq(ledc_pin));
 
-  // wait until middle of 100ms timing. ex. 50ms, 150ms, 250ms,..
-  clock_gettime(CLOCK_REALTIME, &ts);
-  delayMicroseconds((150000000 - ts.tv_nsec % 100000000) / 1000);
-
-  // for the first sample of statistics
-  clock_gettime(CLOCK_REALTIME, &ts);
-  Serial.printf("ts.tv_nsec = %ld\n", ts.tv_nsec);
-
   // start Ticker for TCO
+  // No need to align the Ticker to the 100ms slots: TcoGen() reads the slot from the clock on every call.
   tk.attach_ms(ticker_interval_ms, TcoGen);
 }
 
@@ -231,16 +224,24 @@ void TcoGen()
   static double tk_sq_sum(0.0);
   static int    tk_distribution[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
   static int    tk_last_nsec(0);
+  static int    tk_last_slot(-1);  // the 100ms slot handled last
 
   if (!localtime_valid) {
     led_g = led_g_slow;  // localtime not valid yet
+    tk_last_slot = -1;
     return;
   }
   led_g = led_g_off;  // localtime valid
 
-  getLocalTime(&td);
+  // Act on the first call in each 100ms slot. The slot is read from the clock every time,
+  // so the timing stays right when SNTP steps the clock.
   clock_gettime(CLOCK_REALTIME, &ts);
   int ts_100ms = ts.tv_nsec / 100000000;
+  if (ts_100ms == tk_last_slot) {
+    return;
+  }
+  tk_last_slot = ts_100ms;
+  localtime_r(&ts.tv_sec, &td);  // td from the same clock reading as ts
   switch (ts_100ms) {
     case 0: Tco000ms();  break;
     case 2: Tco200ms();  break;
@@ -338,8 +339,6 @@ void TcOff()
 //   marker, 1:not zero, 0:zero
 int TcoValue()
 {
-  const int days_of_month[12] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
-
   int bcd_hour = Int3Bcd(td.tm_hour);
   int parity_bcd_hour = Parity8(bcd_hour);
 
@@ -349,14 +348,7 @@ int TcoValue()
   int year = td.tm_year + 1900;
   int bcd_year = Int3Bcd(year);
 
-  int days = td.tm_mday;
-  for (int i = 0; i < td.tm_mon; ++i) {  // td.tm_mon starts from 0
-    days += days_of_month[i];
-  }
-  if ((td.tm_mon >= 2) && (((year % 4 == 0) && (year % 100 != 0)) || (year % 400 == 0))) {
-    ++days;
-  }
-  int bcd_days = Int3Bcd(days);
+  int bcd_days = Int3Bcd(td.tm_yday + 1);  // day of the year 1..366, td.tm_yday starts from 0
 
   int day_of_week = td.tm_wday;
 
@@ -455,18 +447,16 @@ const int button_atoms3(41);  // GPIO41
 
 void setup()
 {
-  if (M5.getBoard() == m5::board_t::board_M5Atom) {
-    // To avoid Wi-Fi issues, force GPIO0 to 0 while CH552 outputs 5V with its internal pullup.
-    // https://twitter.com/wakwak_koba/status/1553162622479974400
-    // https://www.facebook.com/groups/154504605228235/posts/699719300706760/
-    pinMode(0, OUTPUT);
-    digitalWrite(0, LOW);
-  }
+  // Wi-Fi issue caused by the CH552 on ATOM Lite/Matrix: M5.begin() applies M5Unified's own countermeasure
+  // (it drives GPIO0 HIGH), so the Rev.2 workaround of driving GPIO0 LOW is not needed here.
+  // https://twitter.com/wakwak_koba/status/1553162622479974400
+  // https://www.facebook.com/groups/154504605228235/posts/699719300706760/
 
   // M5Unified
   auto cfg = M5.config();
   cfg.serial_baudrate = 115200;  // default=0. use Serial.print(). 
   cfg.external_rtc = true;       // default=false. use Unit RTC.
+                                 // Keep it: M5.begin() then starts Wire on the GROVE port, which rtcx.Begin(Wire) needs.
   M5.begin(cfg);
   delay(3000);
   Serial.println();
@@ -476,6 +466,7 @@ void setup()
   FastLED.addLeds<WS2811, led_pin_atoms3lite, GRB>(leds, led_num);
   Serial.println("FastLED add LEDs for ATOMS3 Lite");
 #else
+  pinMode(led_pin_atom, OUTPUT);  // M5.begin() leaves GPIO27 routed to the touch sensor (RTC IO); this routes it back
   FastLED.addLeds<WS2811, led_pin_atom, GRB>(leds, led_num);
   Serial.println("FastLED add LEDs for M5Atom Lite/Matrix");
 #endif
