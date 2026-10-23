@@ -12,7 +12,7 @@ void NtpBegin(const char* time_zone, const char* ntp_server)
   configTzTime(time_zone, ntp_server);
   Serial.printf("NtpBegin: config TZ time = %s\n", time_zone);
   Serial.printf("NtpBegin: SNTP sync mode = %d (0:IMMED 1:SMOOTH)\n", sntp_get_sync_mode());
-  Serial.printf("NtpBegin: SNTP sync interval = %dms\n", sntp_get_sync_interval());
+  Serial.printf("NtpBegin: SNTP sync interval = %lums\n", (unsigned long)sntp_get_sync_interval());
   sntp_sync_status_complete = false;
   sntp_set_time_sync_notification_cb(SntpTimeSyncNotificationCallback);
 }
@@ -69,12 +69,14 @@ void PrintSntpStatus(const char* header, sntp_sync_status_t sntp_sync_status)
 bool SetTimeFromRtcx(const char* time_zone)
 {
   bool rtcx_valid(false);
-  struct tm tm_init;
+  struct tm tm_init = {};
 
   setenv("TZ", time_zone, 1);
   tzset();  // assign timezone with setenv for mktime()
 
-  if (rtcx.ReadTime(&tm_init) == 0) {
+  // Accept only years after 2016: getLocalTime() treats older times as not set, and a 19xx year means the
+  // RTC was set by other software (opposite century bit, and often UTC), so wait for NTP instead.
+  if (rtcx.ReadTime(&tm_init) == 0 && tm_init.tm_year > 116) {
     rtcx_valid = true;
     struct timeval tv = { mktime(&tm_init), 0 };
     settimeofday(&tv, NULL);
