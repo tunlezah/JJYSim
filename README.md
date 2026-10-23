@@ -2,6 +2,8 @@
 ## A JJY radio time signal simulator that runs on the ATOMS3 Lite and ATOM Lite/Matrix
 Note: the standard ATOMS3 (the non-Lite model) is not supported.
 
+### 2026-10-23 update
+- Added Rev.5, which adds a web UI: check the simulator's status and change its settings from a browser. See section 9.
 ### 2025-08-15 update
 - Added Rev.4, which supports version 3.x of the M5Stack board package (Boards Manager). Rev.4 can be used with the ATOMS3 Lite.
 - Updated `BF-018ARev3.ino` to improve detection of the M5Atom Lite/Matrix.
@@ -11,6 +13,25 @@ Note: the standard ATOMS3 (the non-Lite model) is not supported.
 - Fixed `BF-018ARev3.ino`: with the compiler warning level set higher than the default, the `%d` format specifiers in `Serial.printf()` calls were being reported as errors.
 ### 2024-03-12 update
 - Updated to `BF-018ARev3`.
+
+### Rev.5
+- Folder: `BF-018ARev5`
+- Rev.4 plus a web UI (see section 9). It also includes the code-audit fixes for Rev.4: the pulse timing stays correct after NTP time adjustments, the carrier stays off until the time is valid, RTC times before 2017 are ignored, and the likely fix for the ATOM Lite/Matrix LED.
+- ATOMS3 Lite: install version 3.x of the M5Stack board package, as for Rev.4.
+- ATOM Lite/Matrix: version 2.x of the board package (with the Rev.3 library versions) or version 3.x.
+- No extra libraries are needed: the web server, mDNS and settings storage come with the board package.
+- Rev.5 has been compile-tested, but not yet tested on hardware.
+
+Compiles with:
+
+| Tool | Item | Board package 3.x (ATOMS3 Lite, ATOM Lite/Matrix) | Board package 2.x (ATOM Lite/Matrix) |
+|:-:|:-:|:-:|:-:|
+|Application| arduino-cli | 1.5.2-rc.1 | 1.5.2-rc.1 |
+|Boards Manager| M5Stack by M5Stack official | 3.2.3 | 2.1.4 |
+|Library Manager| M5Unified by M5Stack | 0.2.10 | 0.2.5 |
+|Library Manager| M5GFX by M5Stack | 0.2.16 | 0.2.6 |
+|Library Manager| FastLED by Daniel Garcia | 3.10.3 | 3.10.3 |
+|Library Manager| WiFiManager by tzapu | 2.0.17 | 2.0.17 |
 
 ### Rev.4
 - Folder: `BF-018ARev4`
@@ -144,7 +165,7 @@ Reference (Qiita, in Japanese): [Catching NTP time synchronisation on the ESP32 
 To switch to a different Wi-Fi access point, you need to change the SSID/key settings. If the old access point has already been removed, WiFiManager's configuration portal starts automatically. If the old access point is still running, first erase the SSID/key stored in EEPROM; you can then enter new settings. To erase the SSID/key from EEPROM, hold down the button, press the reset button, and keep holding the button until the LED lights up green. At that point, the "configuration portal" is running.
 
 ### (4) Using 40 kHz
-The real JJY signal is broadcast at 40 kHz from the transmitting station in Fukushima Prefecture and at 60 kHz from the station in Saga Prefecture. This project uses a PWM frequency of 40 kHz. The ESP32 cannot generate exactly 60 kHz, but it can generate a frequency quite close to it. In eastern Japan, setting the simulated JJY signal to 60 kHz lets you tell whether a clock has synchronised to the real signal from Fukushima or to the simulated one. To set the simulated signal to 60 kHz, change `jjy_frequency` in `BF-018ARevN.ino` to 60000.
+The real JJY signal is broadcast at 40 kHz from the transmitting station in Fukushima Prefecture and at 60 kHz from the station in Saga Prefecture. This project uses a PWM frequency of 40 kHz. The ESP32 cannot generate exactly 60 kHz, but it can generate a frequency quite close to it. In eastern Japan, setting the simulated JJY signal to 60 kHz lets you tell whether a clock has synchronised to the real signal from Fukushima or to the simulated one. To set the simulated signal to 60 kHz, change `jjy_frequency` in `BF-018ARevN.ino` to 60000. In Rev.5, choose 60 kHz on the web UI instead (section 9); the default is in `settings` in `BF-018ARev5.ino`.
 
 ```
 // for TCO(Time Code Output)
@@ -188,3 +209,32 @@ The M5Atom has a problem where its Wi-Fi output power drops and the connection b
 - [Twitter: @wakwak_koba, 8:36 AM JST, 30 July 2022](https://twitter.com/wakwak_koba/status/1553162622479974400) (in Japanese)
 - [M5Atom CH552 firmware update](https://togetter.com/li/1807623) (Togetter, in Japanese)
 - [Bugs and measures for M5Stack ATOM](https://macsbug.wordpress.com/2021/10/10/bugs-and-measures-for-m5stack-atom/) (in Japanese)
+
+## 9. Web UI (Rev.5)
+Rev.5 serves a status and settings page. In a browser on the same network, open `http://jjy-sim.local/`, or the device's IP address (printed in the serial monitor at startup, and shown in your router's client list).
+
+The page shows:
+- the time being transmitted, and the current minute's time code as it goes out
+- what the status LED means at the moment, with a switch for LED monitoring (the same as the button)
+- the Wi-Fi, NTP and RTC status, uptime and free memory
+- the timing statistics of the 100 ms slots that the firmware prints every minute
+- the serial log, so you don't need a USB connection to follow what the device is doing
+
+Settings you can change on the page (stored in flash, and applied when the device restarts):
+- carrier frequency: 40 kHz or 60 kHz (see 8(4))
+- time zone, as a POSIX TZ string. A JJY clock displays whatever local time it receives, so outside Japan you can choose your own time zone.
+- NTP server
+
+The defaults are in `settings` at the top of `BF-018ARev5.ino`.
+
+### (1) Password
+Changing anything from the page needs a password. Set `web_password` in `BF-018ARev5.ino` before uploading; the user name is `admin` (`web_user`). While `web_password` is empty, the page is read-only. The browser asks for the password the first time you change something (HTTP Digest authentication). The page uses plain HTTP, so use it on a network you trust.
+
+### (2) Erasing the stored SSID/key from the page
+"Forget Wi-Fi network" on the page does the same as holding the button at reset (see 8(3)): the device restarts with its configuration portal running.
+
+### (3) Load on the M5Atom
+The web UI adds about 90 KB of flash (40% of the 3 MB app partition is used on the ATOMS3 Lite) and about 13 KB of RAM. The JJY signal is generated by the Ticker, separately from the web server, which runs in `loop()`; the timing statistics on the page show whether anything disturbs it. While a browser has the page open, it asks the device for its status once a second (about 1 KB each time).
+
+### (4) Host name
+The name `jjy-sim` is set by `web_hostname`. Some devices, for example some Android phones, can't resolve `.local` names; use the IP address instead.
