@@ -243,7 +243,7 @@ void TcoInit()
   ledc_frequency = ledcSetup(ledc_channel, settings.jjy_frequency, ledc_resolution);
   ledcAttachPin(ledc_pin, ledc_channel);
   ledcWrite(ledc_channel, ledc_duty_off);  // carrier off until the time is valid
-  Log.printf("pin= %u, channel= %u, freq= %lu\n", ledc_pin, ledc_channel, ledc_frequency);
+  Log.printf("pin= %u, channel= %u, freq= %lu\n", ledc_pin, ledc_channel, (unsigned long)ledc_frequency);
 #endif
 
   // start Ticker for TCO
