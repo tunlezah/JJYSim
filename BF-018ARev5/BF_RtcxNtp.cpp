@@ -71,6 +71,7 @@ bool SetTimeFromRtcx(const char* time_zone)
 {
   bool rtcx_valid(false);
   struct tm tm_init = {};
+  tm_init.tm_isdst = -1;  // let mktime() work out whether daylight saving time applies to the RTC's wall-clock time
 
   setenv("TZ", time_zone, 1);
   tzset();  // assign timezone with setenv for mktime()

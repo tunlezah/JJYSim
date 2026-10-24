@@ -234,9 +234,11 @@ void TcoInit()
   }
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
   Log.printf("ledcAttach result= %d\n", ledcAttach(ledc_pin, settings.jjy_frequency, ledc_resolution));
+  // ledcReadFreq() reports 0 while the duty is 0, so take the frequency from ledcChangeFrequency(): it sets the
+  // same timer values again and returns the frequency the timer really makes.
+  ledc_frequency = ledcChangeFrequency(ledc_pin, settings.jjy_frequency, ledc_resolution);
   Log.printf("ledcWrite result= %d\n", ledcWrite(ledc_pin, ledc_duty_off));  // carrier off until the time is valid
-  ledc_frequency = ledcReadFreq(ledc_pin);
-  Log.printf("pin= %u, duty= %lu, freq= %lu\n", ledc_pin, ledcRead(ledc_pin), ledc_frequency);
+  Log.printf("pin= %u, duty= %lu, freq= %lu\n", ledc_pin, (unsigned long)ledcRead(ledc_pin), (unsigned long)ledc_frequency);
 #else
   ledc_frequency = ledcSetup(ledc_channel, settings.jjy_frequency, ledc_resolution);
   ledcAttachPin(ledc_pin, ledc_channel);
@@ -614,11 +616,9 @@ void setup()
 #if ARDUINO_USB_CDC_ON_BOOT && ARDUINO_USB_MODE
   // ATOMS3 Lite: Serial is the USB Serial/JTAG port (HWCDC). TcoGen() prints from the Ticker task, so it must not
   // wait for a USB host that has stopped reading: output that can't be queued at once is dropped instead.
-#if ESP_ARDUINO_VERSION_MAJOR >= 3
-  Serial.setTxTimeoutMs(1);  // board package 3.x: 0 would make HWCDC::write() retry for a very long time
-#else
-  Serial.setTxTimeoutMs(0);
-#endif
+  // 1ms, not 0: from arduino-esp32 2.0.17 on, HWCDC::write() retries once per ms until its counter reaches 0,
+  // so 0 never gives up (the 2.0.14 core in M5Stack board package 2.1.4 gives up at once either way).
+  Serial.setTxTimeoutMs(1);
 #endif
   Log.println();
 

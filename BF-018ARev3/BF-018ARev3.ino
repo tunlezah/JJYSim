@@ -523,9 +523,11 @@ void setup()
   NtpBegin(time_zone, ntp_server);
 
 #if ARDUINO_USB_CDC_ON_BOOT && ARDUINO_USB_MODE
-  // ATOMS3 Lite: Serial is the USB Serial/JTAG port (HWCDC). TcoGen() prints from the Ticker task, so never
-  // wait: output that can't be queued at once (e.g. no USB host reading) is dropped instead of stalling the TCO.
-  Serial.setTxTimeoutMs(0);
+  // ATOMS3 Lite: Serial is the USB Serial/JTAG port (HWCDC). TcoGen() prints from the Ticker task, so it must not
+  // wait for a USB host that has stopped reading: output that can't be queued at once is dropped instead.
+  // 1ms, not 0: from arduino-esp32 2.0.17 on, HWCDC::write() retries once per ms until its counter reaches 0,
+  // so 0 never gives up (the 2.0.14 core in M5Stack board package 2.1.4 gives up at once either way).
+  Serial.setTxTimeoutMs(1);
 #endif
 
   // TCO start

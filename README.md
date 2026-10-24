@@ -2,6 +2,11 @@
 ## A JJY radio time signal simulator that runs on the ATOMS3 Lite and ATOM Lite/Matrix
 Note: the standard ATOMS3 (the non-Lite model) is not supported.
 
+### 2026-10-24 update
+- Rev.3/Rev.5: the USB serial timeout on the ATOMS3 Lite is now 1 ms instead of 0. On arduino-esp32 2.0.17 and 3.x, a timeout of 0 makes the serial driver retry for weeks when a connected PC stops reading, which would stop the time signal. The 2.0.14 core in M5Stack board package 2.1.4 was not affected.
+- Rev.4: the same serial timeout as Rev.5 was added, so a PC that stops reading can't delay the time signal.
+- Rev.4/Rev.5: with board package 3.x, the carrier frequency printed at startup (and shown on the Rev.5 page) was 0, because it was read while the carrier was off. The carrier itself was correct.
+- Rev.3/Rev.4/Rev.5: when the clock is set from the RTC at startup, daylight saving time is now taken into account for time zones that have it. JST is unaffected.
 ### 2026-10-23 update
 - Added Rev.5, which adds a web UI: check the simulator's status and change its settings from a browser. See section 9.
 ### 2026-10-21 update
@@ -59,7 +64,7 @@ Confirmed working with:
 
 ### Rev.3
 - Folder: `BF-018ARev3`
-- In the Boards Manager, install version 2.x of the M5Stack board package.
+- In the Boards Manager, install version 2.x of the M5Stack board package. Version 2.1.4, the one in the table below, is the version the ATOMS3 Lite serial handling was checked against.
 - In the Library Manager, install M5Unified 0.2.5 and M5GFX 0.2.6.
 - Works with the M5Atom Lite/Matrix and the ATOMS3 Lite.
 
@@ -217,6 +222,9 @@ The M5Atom has a problem where its Wi-Fi output power drops and the connection b
 - [M5Atom CH552 firmware update](https://togetter.com/li/1807623) (Togetter, in Japanese)
 - [Bugs and measures for M5Stack ATOM](https://macsbug.wordpress.com/2021/10/10/bugs-and-measures-for-m5stack-atom/) (in Japanese)
 
+### (7) Differences from the real JJY signal
+At minutes 15 and 45 the real JJY replaces the year and day-of-week bits (seconds 40 to 55) with its call sign in Morse code and a notice of planned transmission interruptions. The simulator sends the normal time code every minute. The simulator also switches the carrier fully off between pulses, where the real signal drops to 10% power. Radio clocks and watches don't depend on either difference.
+
 ## 9. Web UI (Rev.5)
 Rev.5 serves a status and settings page. In a browser on the same network, open `http://jjy-sim.local/`, or the device's IP address (printed in the serial monitor at startup, and shown in your router's client list).
 
@@ -229,7 +237,7 @@ The page shows:
 
 Settings you can change on the page (stored in flash, and applied when the device restarts):
 - carrier frequency: 40 kHz or 60 kHz (see 8(4))
-- time zone, as a POSIX TZ string. A JJY clock displays whatever local time it receives, so outside Japan you can choose your own time zone.
+- time zone, as a POSIX TZ string. A JJY clock displays whatever local time it receives, so outside Japan you can choose your own time zone. Watches with a home-city setting, for example Citizen multi-band models, treat the received time as Japan time and convert it to the home city's time: either keep the home city on Tokyo and set your own time zone here, or set your real home city and keep `JST-9`. Such watches also switch their summer-time setting off when they receive JJY, because the JJY code carries no summer-time flag, so a time zone with daylight saving rules works best with the home city on Tokyo.
 - NTP server
 
 The defaults are in `settings` at the top of `BF-018ARev5.ino`.
