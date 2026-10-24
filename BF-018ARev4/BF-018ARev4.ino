@@ -205,8 +205,11 @@ void TcoInit()
     ledc_pin = ledc_pin_atoms3;
   }
   Serial.printf("ledcAttach result= %d\n", ledcAttach(ledc_pin, ledc_frequency, ledc_resolution));
+  // ledcReadFreq() reports 0 while the duty is 0, so take the frequency from ledcChangeFrequency(): it sets the
+  // same timer values again and returns the frequency the timer really makes.
+  uint32_t ledc_frequency_actual = ledcChangeFrequency(ledc_pin, ledc_frequency, ledc_resolution);
   Serial.printf("ledcWrite result= %d\n", ledcWrite(ledc_pin, ledc_duty_off));  // carrier off until the time is valid
-  Serial.printf("pin= %u, duty= %lu, freq= %lu\n", ledc_pin, ledcRead(ledc_pin), ledcReadFreq(ledc_pin));
+  Serial.printf("pin= %u, duty= %lu, freq= %lu\n", ledc_pin, (unsigned long)ledcRead(ledc_pin), (unsigned long)ledc_frequency_actual);
 
   // start Ticker for TCO
   // No need to align the Ticker to the 100ms slots: TcoGen() reads the slot from the clock on every call.
@@ -459,6 +462,13 @@ void setup()
                                  // Keep it: M5.begin() then starts Wire on the GROVE port, which rtcx.Begin(Wire) needs.
   M5.begin(cfg);
   delay(3000);
+#if ARDUINO_USB_CDC_ON_BOOT && ARDUINO_USB_MODE
+  // ATOMS3 Lite: Serial is the USB Serial/JTAG port (HWCDC). TcoGen() prints from the Ticker task, so it must not
+  // wait for a USB host that has stopped reading: output that can't be queued at once is dropped instead.
+  // 1ms, not 0: from arduino-esp32 2.0.15 on, HWCDC::write() retries once per ms until its counter reaches 0,
+  // so 0 never gives up (the 2.0.14 core in M5Stack board package 2.1.4 gives up at once either way).
+  Serial.setTxTimeoutMs(1);
+#endif
   Serial.println();
 
   // FastLED
