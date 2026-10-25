@@ -298,11 +298,14 @@ void TcoGen()
   static int     tk_pulse_slots(0);   // the length of the running pulse in 100ms slots: 2, 5 or 8
   static int     tk_pulse_sec(0);     // the second (0..59) the running pulse stands for, for the log
   static int64_t tk_pulse_end_us(0);  // when the running pulse ends, on the monotonic clock
-  const long     tk_late_limit_ns = 100000000L;  // a second first seen later than this into itself gets no pulse
+  const long     tk_late_limit_ns = 100000000L;  // a second first seen later than this into itself gets no pulse,
+  const int64_t  tk_min_gap_us    = 100000LL;    // nor one that begins less than this after the last pulse ended
+  static int64_t tk_off_us(-tk_min_gap_us);      // when the last pulse ended, on the monotonic clock
 
   if (!localtime_valid) {
     if (tk_carrier) {
       tk_carrier = false;
+      tk_off_us = esp_timer_get_time();
       TcOff();
     }
     tk_last_slot = -1;
@@ -313,17 +316,16 @@ void TcoGen()
   // A pulse begins when the system clock's second changes, and lasts 0.2, 0.5 or 0.8s by the processor's
   // monotonic clock, which no time adjustment touches: whatever the system clock does meanwhile, a pulse once
   // begun keeps its length and so its meaning. A time adjustment only moves the start of the following pulses.
-  // A second that begins while a pulse is still running or ending, or that is first seen more than 0.1s into
-  // itself (an adjustment forward, a stall, the first valid call), gets no pulse rather than a wrong one: a pulse
-  // begun later could run into the next second's. After an adjustment back of less than a second the clock passes a
-  // second already sent, which is not sent again; after a larger one the time code starts afresh from the new
-  // time.
+  // A second that begins while a pulse is still running or less than 0.1s after one ended, or that is first seen
+  // more than 0.1s into itself (an adjustment forward, a stall, the first valid call), gets no pulse rather than a
+  // wrong one: a pulse begun later could run into the next second's, and a receiver could miss too short a gap and
+  // read two pulses as one. After an adjustment back of less than a second the clock passes a second already sent,
+  // which is not sent again; after a larger one the time code starts afresh from the new time.
   clock_gettime(CLOCK_REALTIME, &ts);
   int64_t now_us = esp_timer_get_time();
-  bool pulse_ended = false;  // in this call: no new pulse in the same call, so that two pulses never run together
   if (tk_carrier && now_us - tk_pulse_end_us >= 0) {
     tk_carrier = false;
-    pulse_ended = true;
+    tk_off_us = now_us;
     TcOff();
     switch (tk_pulse_slots) {
       case 2:  Log.printf(" %d ", tk_pulse_sec);  break;  // marker
@@ -343,7 +345,7 @@ void TcoGen()
   if (ts.tv_sec != tk_sec) {
     tk_sec = ts.tv_sec;
     localtime_r(&ts.tv_sec, &td);  // td from the same clock reading as ts
-    if (!tk_carrier && !pulse_ended && ts.tv_nsec < tk_late_limit_ns) {
+    if (!tk_carrier && now_us - tk_off_us >= tk_min_gap_us && ts.tv_nsec < tk_late_limit_ns) {
       int value = TcoValue();
       tk_pulse_slots  = (value == marker) ? 2 : (value != 0) ? 5 : 8;  // 0.2s, 0.5s, 0.8s
       tk_pulse_sec    = td.tm_sec;
