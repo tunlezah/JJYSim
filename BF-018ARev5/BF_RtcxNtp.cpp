@@ -30,6 +30,63 @@ void SntpTimeSyncNotificationCallback(struct timeval *tv)
   }
 }
 
+// The RTC is written so that its seconds begin on the system clock's. The write runs with the RTC's clock stopped,
+// and the time circuits make their first increment some time after the clock is started again: 0.5078s on the
+// PCF8563 (datasheet 8.10, table 26), possibly 1s on a clone that resets its whole divider chain (the HYM8563 data
+// sheet does not say). The lead below is that time plus the I2C transfers before the start. After each write the
+// RTC is watched for its first change of seconds and the lead is corrected from what is measured, so that the
+// alignment comes out right on either chip; the log shows the result.
+static long rtcx_lead_us(507813L + 2000L);
+
+// Wait for the system clock to reach start_us into a second (a 3ms window, up to 1.2s), then write the second in
+// progress plus offset_sec with the RTC's clock stopped and started again. false: no window in time (loop() was
+// held up) or the write failed; the RTC is then left as it is.
+static bool RtcxWriteAligned(long start_us, int offset_sec)
+{
+  struct timeval tv;
+  unsigned long wait_start_ms = millis();
+  for (;;) {
+    gettimeofday(&tv, NULL);
+    if (tv.tv_usec >= start_us && tv.tv_usec < start_us + 3000L) {
+      break;
+    }
+    if (millis() - wait_start_ms >= 1200) {
+      Log.print("RTCx not updated: no quiet moment for the write\n");
+      return false;
+    }
+    delay(1);
+  }
+  struct tm tm_write;
+  time_t sec = tv.tv_sec + offset_sec;
+  localtime_r(&sec, &tm_write);
+  int64_t write_start_us = esp_timer_get_time();
+  int result = rtcx.WriteTimeAtSecond(&tm_write);
+  Log.printf("RTCx write %s: started at %ld us of the second, the clock started %ld us later\n",
+             result == 0 ? "done" : "failed", (long)tv.tv_usec, (long)rtcx.StartedAfterUs(write_start_us));
+  return result == 0;
+}
+
+// The system clock's phase (us into its second) at the RTC's next change of seconds, or -1 if that could not be
+// seen within 1.2s. The reads take about 1ms each, so the result is late by up to that much.
+static long RtcxSecondChangePhaseUs()
+{
+  struct tm tm_first, tm_now;
+  if (rtcx.ReadTime(&tm_first) != 0) {
+    return -1;
+  }
+  unsigned long wait_start_ms = millis();
+  for (;;) {
+    if (rtcx.ReadTime(&tm_now) != 0 || millis() - wait_start_ms >= 1200) {
+      return -1;
+    }
+    if (tm_now.tm_sec != tm_first.tm_sec) {
+      struct timeval tv;
+      gettimeofday(&tv, NULL);
+      return tv.tv_usec;
+    }
+  }
+}
+
 bool RtcxUpdate(bool rtcx_avail)
 {
   if (!sntp_sync_status_complete) {
@@ -46,28 +103,35 @@ bool RtcxUpdate(bool rtcx_avail)
   //SNTP sync: Wednesday, September 11 2021 11:10:46
 
   if (rtcx_avail) {
-    // Write the RTC so that its seconds begin on the system clock's. With the PCF8563 the time circuits first
-    // increment 0.5078s after the STOP bit is released (datasheet section 8.10, table 26), so the write sequence
-    // starts about 0.4922s into the second, less the time its I2C transfers take, and writes the second in
-    // progress. The wait, up to 1s here in loop(), happens once per NTP sync. The transfer time is logged so that
-    // write_sequence_us can be checked on the hardware.
-    const long first_increment_us = 507813;  // after STOP is released: PCF8563 datasheet table 26
-    const long write_sequence_us  = 2000;    // the I2C transfers before STOP is released, at 100kHz
-    const long start_us = 1000000L - first_increment_us - write_sequence_us;
-    struct timeval tv;
-    unsigned long wait_start_ms = millis();
-    for (;;) {
-      gettimeofday(&tv, NULL);
-      if ((tv.tv_usec >= start_us && tv.tv_usec < start_us + 3000) || millis() - wait_start_ms >= 1200) {
+    // once per NTP sync, here in loop(): the aligned write, a check of the RTC's first change of seconds (up to
+    // about 2.5s in all), and one more write with the corrected lead if the check was off by 20ms or more
+    for (int attempt = 0; attempt < 2; ++attempt) {
+      long start_us = 1000000L - rtcx_lead_us;
+      int offset_sec = 0;
+      while (start_us < 0) {  // a lead of a second or more: start before the boundary and write the second to come
+        start_us += 1000000L;
+        ++offset_sec;
+      }
+      if (!RtcxWriteAligned(start_us, offset_sec)) {
         break;
       }
-      delay(1);
+      long phase_us = RtcxSecondChangePhaseUs();
+      if (phase_us < 0) {
+        Log.print("RTCx: its change of seconds could not be watched\n");
+        break;
+      }
+      long error_us = phase_us > 500000L ? phase_us - 1000000L : phase_us;  // +: the RTC's seconds begin after the system clock's
+      Log.printf("RTCx: its seconds begin %+ld us from the system clock's (lead %ld us)\n", error_us, rtcx_lead_us);
+      if (error_us > -20000L && error_us < 20000L) {
+        break;
+      }
+      rtcx_lead_us += error_us;  // late by error_us: start that much earlier next time
+      if (rtcx_lead_us < 100000L || rtcx_lead_us > 1900000L) {
+        rtcx_lead_us = 507813L + 2000L;  // not credible: back to the data sheet value
+        break;
+      }
+      Log.print("RTCx: written again with the corrected lead\n");
     }
-    localtime_r(&tv.tv_sec, &tm_sync);
-    int64_t write_start_us = esp_timer_get_time();
-    int result = rtcx.WriteTimeAtSecond(&tm_sync);
-    Log.printf("RTCx %s (started at %ld us of the second, transfers until the start took %ld us)\n",
-               result == 0 ? "updated" : "update failed", (long)tv.tv_usec, (long)(rtcx.StartedAfterUs(write_start_us)));
   }
   return true;
 }

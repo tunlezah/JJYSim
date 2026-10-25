@@ -10,8 +10,8 @@ class Pcf8563 {
   int Begin(TwoWire &wire);
   int ReadTime(struct tm *tm_now);
   int WriteTime(struct tm *tm_now);
-  int WriteTimeAtSecond(struct tm *tm_now);  // with the clock stopped and started again: its seconds begin 0.5078s after the start
-  bool WriteInterrupted() const { return m_write_interrupted; }  // Begin() found the marker of an unfinished WriteTimeAtSecond()
+  int WriteTimeAtSecond(struct tm *tm_now);  // with the clock stopped and started again: its seconds begin some time after the start
+  bool WriteInterrupted() const { return m_write_interrupted; }  // Begin() found the marker of an unfinished or failed WriteTimeAtSecond()
   int64_t StartedAfterUs(int64_t from_us) const { return m_started_us - from_us; }  // when the clock was last started, for checking the timing
 
   int SetAlarm(int miniute = -1, int hour = -1, int day = -1, int weekday = -1);

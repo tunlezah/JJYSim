@@ -6,11 +6,12 @@
 #include "BF_Log.h"
 #include "BF_Pcf8563.h"
 
-// WriteTimeAtSecond() keeps a marker in the day-alarm register while it runs. Nothing else writes that register with
-// this value (M5Unified's own RTC start-up only writes registers 00h and 0Eh), so if Begin() finds it, the last
-// write was interrupted and the time is stale.
-static const int     write_marker_reg   = 0x0b;
-static const uint8_t write_marker_value = 0xaa;  // alarm disabled (bit 7) with the impossible day "2A"
+// WriteTimeAtSecond() keeps a marker in the timer register (0Fh) while it runs. The timer is never enabled here, so
+// the register is free, and M5Unified's own RTC start-up (M5.begin() with external_rtc) writes 00h, 01h, 09h to
+// 0Ch and 0Eh but not 0Fh, so the marker survives it. If Begin() finds the marker, the last write was interrupted
+// or failed half-way, and the time is stale.
+static const int     write_marker_reg   = 0x0f;
+static const uint8_t write_marker_value = 0xaa;  // the timer register is otherwise cleared to 0
 
 int Pcf8563::Begin(TwoWire &wire)
 {
@@ -18,7 +19,7 @@ int Pcf8563::Begin(TwoWire &wire)
 
   m_write_interrupted = (ReadReg(write_marker_reg, 1) == 1) && (m_reg[write_marker_reg] == write_marker_value);
 
-  // clear registers (WriteAlarm() also clears the marker)
+  // clear registers (WriteTimer() also clears the marker)
   external_clock_test_mode = false;
   source_clock_stoped      = false;
   power_on_reset_override  = true;
@@ -80,9 +81,9 @@ int Pcf8563::WriteTime(struct tm *tm_now)
 }
 
 // Write the time with the clock stopped, then start it. STOP holds the upper part of the prescaler in reset, so the
-// seconds first increment 0.5078s after the clock is started (PCF8563 datasheet 8.10): the caller times this call
-// so that this lands on the system clock's next second. The marker in the day-alarm register is set first and
-// cleared last; found at Begin(), it means this was interrupted and the time is stale.
+// seconds first increment 0.5078s after the clock is started (PCF8563 datasheet 8.10; a clone may take 1s): the
+// caller times this call so that this lands on the system clock's next second. The marker is set first and
+// cleared last, and left in place if the time write failed; found at Begin(), it means the time is not to be trusted.
 int Pcf8563::WriteTimeAtSecond(struct tm *tm_now)
 {
   m_reg[write_marker_reg] = write_marker_value;
@@ -93,8 +94,9 @@ int Pcf8563::WriteTimeAtSecond(struct tm *tm_now)
   source_clock_stoped = false;
   if (WriteControl() != 0) return 1;  // the clock stays stopped and the marker stays: Begin() reports it next time
   m_started_us = esp_timer_get_time();
-  if (WriteAlarm() != 0) return 1;    // clears the marker (alarms are off)
-  return result;
+  if (result != 0) return result;     // the time may be half written: the marker stays, so it is not trusted next time
+  if (WriteTimer() != 0) return 1;    // clears the marker (the timer is off)
+  return 0;
 }
 
 // to enable alarm, give valid value for arguments of minute, hour, day, weekday

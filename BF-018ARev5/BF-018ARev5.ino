@@ -177,10 +177,10 @@ const char* WlStatus(wl_status_t wl_status)
 // failed retries after which WifiCheck() restarts the device
 int WifiRestartAfter()
 {
-  // A rejected password (WL_CONNECT_FAILED) is not retried by the driver and does not go away: restart soon, so that
-  // the configuration portal reopens. The same without stored Wi-Fi settings, and without a valid time, when there
-  // is no time signal to lose. With a valid time and a lost network, a restart only silences the signal for about
-  // a minute, so it is the last resort, for a stuck Wi-Fi driver.
+  // An outright rejection (WL_CONNECT_FAILED, which the driver does not retry) does not go away: restart soon, so
+  // that the configuration portal reopens. The same without stored Wi-Fi settings, and without a valid time, when
+  // there is no time signal to lose. With a valid time and a lost network, a restart only silences the signal for
+  // about a minute, so it is the last resort, for a stuck Wi-Fi driver.
   if (wifi_status == WL_CONNECT_FAILED || !wifi_saved || !localtime_valid) {
     return wifi_retry_max_times;
   }
@@ -207,12 +207,11 @@ void WifiCheck()
   }
   wifi_retry_last_ms = millis();
 
-  // let the wifi process do unless it has given up: connected, or still trying (WL_NO_SSID_AVAIL, WL_IDLE_STATUS, ..)
-  if (wifi_status != WL_DISCONNECTED && wifi_status != WL_CONNECT_FAILED) {
+  if (wifi_status == WL_CONNECTED) {
     wifi_retry_times = 0;
     return;
   }
-  ++wifi_retry_times;
+  ++wifi_retry_times;  // minutes without a connection, whatever the reason
 
   // restart as the last resort, or soon when that is what reopens the configuration portal: see WifiRestartAfter()
   if (wifi_retry_times > WifiRestartAfter()) {
@@ -221,11 +220,14 @@ void WifiCheck()
     return;
   }
 
-  // reconnect with the stored settings. WiFi.reconnect() fails while the driver is still busy with its own attempt,
-  // and the driver does not retry by itself after WL_CONNECT_FAILED, so disconnect first and start again.
-  Log.printf("[WiFi]reconnect %d\n", wifi_retry_times);
-  WiFi.disconnect();
-  WiFi.begin();
+  // The driver keeps trying by itself after most failures (WL_NO_SSID_AVAIL, WL_CONNECTION_LOST, ..); after
+  // WL_DISCONNECTED and WL_CONNECT_FAILED it does not, so start it again with the stored settings. WiFi.reconnect()
+  // fails while the driver is still busy with an attempt, so disconnect first.
+  if (wifi_status == WL_DISCONNECTED || wifi_status == WL_CONNECT_FAILED) {
+    Log.printf("[WiFi]reconnect %d\n", wifi_retry_times);
+    WiFi.disconnect();
+    WiFi.begin();
+  }
 }
 
 void WifiConfigModeCallback(WiFiManager *wm)
@@ -292,10 +294,14 @@ void TcoGen()
   static int    tk_last_slot(-1);   // the 100ms slot handled last
   static time_t tk_sec(0);          // the second whose time code value is in tk_on_slots
   static int    tk_on_slots(0);     // the carrier is on in slots 0 .. tk_on_slots-1 of that second: 2, 5 or 8
-  static bool    tk_carrier(false);  // the carrier state last written
-  static time_t  tk_off_sec(0);      // the second in which the carrier was last switched off
-  static int64_t tk_last_ns(0);      // the clock at the previous call, to measure a step back
-  static int     tk_hold_calls(0);   // calls spent holding the carrier on after a small step back, 0: not holding
+  static bool    tk_carrier(false);   // the carrier state last written
+  static time_t  tk_off_sec(0);       // the second in which the carrier was last switched off
+  static int64_t tk_last_ns(0);       // the clock at the previous call, to measure a step back
+  static int64_t tk_stretch_ns(0);    // how much steps back have stretched the pulse of the current second
+  static int     tk_hold_calls(0);    // calls spent holding the pulse on after a step back, 0: not holding
+  const int64_t  tk_stretch_limit_ns = 120000000LL;  // a pulse stretched by less keeps its meaning: 0.2s and 0.5s are read below 0.35s and 0.65s
+  const int64_t  tk_late_limit_ns    = 150000000LL;  // a second entered later than this gets no pulse: a shorter one could read as another value
+  const int      tk_hold_calls_max   = 15;           // a hold lasts the step at most, 120ms, plus some late calls
 
   if (!localtime_valid) {
     if (tk_carrier) {
@@ -304,41 +310,50 @@ void TcoGen()
     }
     tk_last_slot = -1;
     tk_sec = 0;
+    tk_stretch_ns = 0;
     tk_hold_calls = 0;
     return;
   }
 
   // The carrier is keyed by level, not by edge: every call works out from the clock whether the carrier should be
-  // on right now, and writes it only when that changes. A late call or a small clock step then delays an edge by
-  // one call (10ms) at most, and whatever happens, the next second is sent right. A step forward past a pulse
-  // still loses that pulse, and a large step back still costs one second: the time itself moved.
+  // on right now, and writes it only when that changes. A late call then delays an edge by one call (10ms) at
+  // most, and whatever happens the next second is sent right. A clock step moves the edges with it: small steps
+  // (below the limits above) leave every pulse readable, larger ones cost the pulse of the second they land in,
+  // which is then left out rather than sent with a wrong length.
   clock_gettime(CLOCK_REALTIME, &ts);
   int64_t now_ns = (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
   int64_t step_back_ns = tk_last_ns - now_ns;  // > 0 when the clock was stepped back since the previous call
   tk_last_ns = now_ns;
   int ts_100ms = ts.tv_nsec / 100000000;
+  bool pulse_on = tk_carrier && tk_off_sec != tk_sec;  // the pulse of the second last sent is still on
+  if (step_back_ns > 0 && pulse_on) {
+    tk_stretch_ns += step_back_ns;  // a step back while the pulse is on stretches the pulse by the step
+  }
   if (ts.tv_sec < tk_sec) {
-    // The clock was stepped back into a second already sent. While that second's pulse is still on and the step
-    // is small, keep it on until the clock reaches that second again: the pulse is stretched by the step, which
-    // keeps its meaning below 150ms. Otherwise start afresh with the new time, so that second is sent again.
-    bool hold = (tk_hold_calls > 0) ? (tk_hold_calls < 20)
-                                    : (tk_carrier && tk_off_sec != tk_sec && step_back_ns < 150000000LL);
+    // Stepped back into a second already sent. While its pulse is on and has not been stretched too far, keep the
+    // pulse on until the clock reaches that second again. Otherwise start afresh with the new time (that second is
+    // then sent again).
+    bool hold = (tk_hold_calls > 0) ? (tk_hold_calls < tk_hold_calls_max)
+                                    : (pulse_on && tk_stretch_ns < tk_stretch_limit_ns);
     if (hold) {
       ++tk_hold_calls;
       return;
     }
     tk_sec = 0;
   }
+  else if (pulse_on && tk_stretch_ns >= tk_stretch_limit_ns && tk_on_slots != 8) {
+    tk_off_sec = tk_sec;  // stretched too far within the second: end the pulse now (a zero, 0.8s, is left on: it keeps its meaning however long it gets)
+  }
   tk_hold_calls = 0;
   bool new_second = false;
   if (ts.tv_sec != tk_sec) {
-    bool fresh = (tk_sec == 0);
     tk_sec = ts.tv_sec;
+    tk_stretch_ns = 0;
     localtime_r(&ts.tv_sec, &td);  // td from the same clock reading as ts
     int value = TcoValue();
     tk_on_slots = (value == marker) ? 2 : (value != 0) ? 5 : 8;  // 0.2s, 0.5s, 0.8s
-    if (fresh && ts_100ms != 0) {
-      tk_off_sec = tk_sec;  // starting in the middle of a second: no partial pulse, the next second starts clean
+    if (ts.tv_nsec >= tk_late_limit_ns) {
+      tk_off_sec = tk_sec;  // entered late (a step forward, a stall, the first valid call): no pulse for this second
     }
     new_second = true;
   }
