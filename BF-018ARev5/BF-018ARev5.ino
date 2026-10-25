@@ -110,7 +110,7 @@ enum led_b_t {
   led_b_on,    // TCO on
 };
 led_r_t led_r(led_r_off);
-led_b_t led_b(led_b_off);  // green: see LedGreen()
+volatile led_b_t led_b(led_b_off);  // written by the Ticker task, read in loop(); green: see LedGreen()
 
 bool led_enable(true);
 
@@ -220,8 +220,9 @@ void WifiCheck()
     return;
   }
 
-  // The driver keeps trying by itself after most failures (WL_NO_SSID_AVAIL, WL_CONNECTION_LOST, ..); after
-  // WL_DISCONNECTED and WL_CONNECT_FAILED it does not, so start it again with the stored settings. WiFi.reconnect()
+  // The driver retries by itself after most disconnections (no AP found, timeouts, a wrong password, ..), and the
+  // status alone does not tell whether it has given up. A fresh start with the stored settings once a minute covers
+  // the reasons it does not retry, at the cost of cutting short an attempt of its own now and then. WiFi.reconnect()
   // fails while the driver is still busy with an attempt, so disconnect first.
   if (wifi_status == WL_DISCONNECTED || wifi_status == WL_CONNECT_FAILED) {
     Log.printf("[WiFi]reconnect %d\n", wifi_retry_times);
@@ -239,7 +240,7 @@ void WifiConfigModeCallback(WiFiManager *wm)
 //..:....1....:....2....:....3....:....4....:....5....:....6....:....7..
 // TCO(Time Code Output)
 Ticker tk;
-const int ticker_interval_ms(10);  // poll every 10ms, TcoGen() acts once per 100ms slot
+const int ticker_interval_ms(10);  // poll every 10ms: TcoGen() starts a pulse when the second changes and ends it when its length is up
 const int marker(0xff);  // marker code TcoValue() returns
 
 // PWM for TCO signal
@@ -276,7 +277,7 @@ void TcoInit()
 #endif
 
   // start Ticker for TCO
-  // No need to align the Ticker to the 100ms slots: TcoGen() reads the slot from the clock on every call.
+  // No need to align the Ticker to the second: TcoGen() reads the clock on every call.
   tk.attach_ms(ticker_interval_ms, TcoGen);
 }
 
@@ -291,17 +292,13 @@ void TcoGen()
   static double tk_sq_sum(0.0);
   static int    tk_distribution[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
   static int    tk_last_nsec(0);
-  static int    tk_last_slot(-1);   // the 100ms slot handled last
-  static time_t tk_sec(0);          // the second whose time code value is in tk_on_slots
-  static int    tk_on_slots(0);     // the carrier is on in slots 0 .. tk_on_slots-1 of that second: 2, 5 or 8
-  static bool    tk_carrier(false);   // the carrier state last written
-  static time_t  tk_off_sec(0);       // the second in which the carrier was last switched off
-  static int64_t tk_last_ns(0);       // the clock at the previous call, to measure a step back
-  static int64_t tk_stretch_ns(0);    // how much steps back have stretched the pulse of the current second
-  static int     tk_hold_calls(0);    // calls spent holding the pulse on after a step back, 0: not holding
-  const int64_t  tk_stretch_limit_ns = 120000000LL;  // a pulse stretched by less keeps its meaning: 0.2s and 0.5s are read below 0.35s and 0.65s
-  const int64_t  tk_late_limit_ns    = 150000000LL;  // a second entered later than this gets no pulse: a shorter one could read as another value
-  const int      tk_hold_calls_max   = 15;           // a hold lasts the step at most, 120ms, plus some late calls
+  static int    tk_last_slot(-1);     // the 100ms slot handled last
+  static time_t  tk_sec(0);           // the second of the system clock seen last
+  static bool    tk_carrier(false);   // the carrier is on: a pulse is running
+  static int     tk_pulse_slots(0);   // the length of the running pulse in 100ms slots: 2, 5 or 8
+  static int     tk_pulse_sec(0);     // the second (0..59) the running pulse stands for, for the log
+  static int64_t tk_pulse_end_us(0);  // when the running pulse ends, on the monotonic clock
+  const long     tk_late_limit_ns = 100000000L;  // a second first seen later than this into itself gets no pulse
 
   if (!localtime_valid) {
     if (tk_carrier) {
@@ -310,73 +307,54 @@ void TcoGen()
     }
     tk_last_slot = -1;
     tk_sec = 0;
-    tk_stretch_ns = 0;
-    tk_hold_calls = 0;
     return;
   }
 
-  // The carrier is keyed by level, not by edge: every call works out from the clock whether the carrier should be
-  // on right now, and writes it only when that changes. A late call then delays an edge by one call (10ms) at
-  // most, and whatever happens the next second is sent right. A clock step moves the edges with it: small steps
-  // (below the limits above) leave every pulse readable, larger ones cost the pulse of the second they land in,
-  // which is then left out rather than sent with a wrong length.
+  // A pulse begins when the system clock's second changes, and lasts 0.2, 0.5 or 0.8s by the processor's
+  // monotonic clock, which no time adjustment touches: whatever the system clock does meanwhile, a pulse once
+  // begun keeps its length and so its meaning. A time adjustment only moves the start of the following pulses.
+  // A second that begins while a pulse is still running or ending, or that is first seen more than 0.1s into
+  // itself (an adjustment forward, a stall, the first valid call), gets no pulse rather than a wrong one: a pulse
+  // begun later could run into the next second's. After an adjustment back of less than a second the clock passes a
+  // second already sent, which is not sent again; after a larger one the time code starts afresh from the new
+  // time.
   clock_gettime(CLOCK_REALTIME, &ts);
-  int64_t now_ns = (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
-  int64_t step_back_ns = tk_last_ns - now_ns;  // > 0 when the clock was stepped back since the previous call
-  tk_last_ns = now_ns;
-  int ts_100ms = ts.tv_nsec / 100000000;
-  bool pulse_on = tk_carrier && tk_off_sec != tk_sec;  // the pulse of the second last sent is still on
-  if (step_back_ns > 0 && pulse_on) {
-    tk_stretch_ns += step_back_ns;  // a step back while the pulse is on stretches the pulse by the step
+  int64_t now_us = esp_timer_get_time();
+  bool pulse_ended = false;  // in this call: no new pulse in the same call, so that two pulses never run together
+  if (tk_carrier && now_us - tk_pulse_end_us >= 0) {
+    tk_carrier = false;
+    pulse_ended = true;
+    TcOff();
+    switch (tk_pulse_slots) {
+      case 2:  Log.printf(" %d ", tk_pulse_sec);  break;  // marker
+      case 5:  Log.print("1");  break;
+      default: Log.print("0");  break;
+    }
   }
   if (ts.tv_sec < tk_sec) {
-    // Stepped back into a second already sent. While its pulse is on and has not been stretched too far, keep the
-    // pulse on until the clock reaches that second again. Otherwise start afresh with the new time (that second is
-    // then sent again).
-    bool hold = (tk_hold_calls > 0) ? (tk_hold_calls < tk_hold_calls_max)
-                                    : (pulse_on && tk_stretch_ns < tk_stretch_limit_ns);
-    if (hold) {
-      ++tk_hold_calls;
-      return;
-    }
-    tk_sec = 0;
-  }
-  else if (pulse_on && tk_stretch_ns >= tk_stretch_limit_ns && tk_on_slots != 8) {
-    tk_off_sec = tk_sec;  // stretched too far within the second: end the pulse now (a zero, 0.8s, is left on: it keeps its meaning however long it gets)
-  }
-  tk_hold_calls = 0;
-  bool new_second = false;
-  if (ts.tv_sec != tk_sec) {
-    tk_sec = ts.tv_sec;
-    tk_stretch_ns = 0;
-    localtime_r(&ts.tv_sec, &td);  // td from the same clock reading as ts
-    int value = TcoValue();
-    tk_on_slots = (value == marker) ? 2 : (value != 0) ? 5 : 8;  // 0.2s, 0.5s, 0.8s
-    if (ts.tv_nsec >= tk_late_limit_ns) {
-      tk_off_sec = tk_sec;  // entered late (a step forward, a stall, the first valid call): no pulse for this second
-    }
-    new_second = true;
-  }
-  // on in the first tk_on_slots slots, and never on again in a second once it has been switched off: a small step
-  // back within the second would otherwise add a short extra pulse
-  bool carrier = (ts_100ms < tk_on_slots) && (tk_sec != tk_off_sec);
-  if (carrier != tk_carrier) {
-    tk_carrier = carrier;
-    if (carrier) {
-      TcOn();
+    if (tk_sec - ts.tv_sec > 1) {
+      tk_sec = 0;  // adjusted back by more than a second: start afresh
     }
     else {
-      tk_off_sec = tk_sec;
-      TcOff();
-      switch (tk_on_slots) {
-        case 2:  Log.printf(" %d ", td.tm_sec);  break;  // marker
-        case 5:  Log.print("1");  break;
-        default: Log.print("0");  break;
-      }
+      return;      // adjusted back into a second already sent: wait until the clock has passed it again
     }
   }
-  if (new_second && td.tm_sec == 0) {
-    Log.print(&td, "\n%A %B %d %Y %H:%M:%S\n");  // after the carrier write, so the minute marker's edge is not delayed
+  int ts_100ms = ts.tv_nsec / 100000000;
+  if (ts.tv_sec != tk_sec) {
+    tk_sec = ts.tv_sec;
+    localtime_r(&ts.tv_sec, &td);  // td from the same clock reading as ts
+    if (!tk_carrier && !pulse_ended && ts.tv_nsec < tk_late_limit_ns) {
+      int value = TcoValue();
+      tk_pulse_slots  = (value == marker) ? 2 : (value != 0) ? 5 : 8;  // 0.2s, 0.5s, 0.8s
+      tk_pulse_sec    = td.tm_sec;
+      // ends on the call nearest to the length: the calls come every ticker_interval_ms, this one began the pulse
+      tk_pulse_end_us = now_us + (int64_t)tk_pulse_slots * 100000LL - (int64_t)ticker_interval_ms * 500LL;
+      tk_carrier = true;
+      TcOn();
+    }
+    if (td.tm_sec == 0) {
+      Log.print(&td, "\n%A %B %d %Y %H:%M:%S\n");  // after the carrier write, so the minute marker's edge is not delayed
+    }
   }
 
   // statistics: on the first call in each 100ms slot

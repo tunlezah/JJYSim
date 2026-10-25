@@ -566,7 +566,7 @@ function renderBanner() {
   }
   else if (lost && lastOk) {
     title = 'No response from the simulator for ' + (silent < 60 ? silent + ' s' : Math.floor(silent / 60) + ' min');
-    text = 'If its Wi-Fi dropped, it tries to reconnect every 60 seconds and restarts itself after 3 failed attempts. '
+    text = 'If its Wi-Fi dropped, it tries to reconnect every 60 seconds; while its time is valid it restarts only after about six hours without Wi-Fi, otherwise after about four minutes. '
       + 'This page keeps trying and shows the last values it received.';
   }
   $('banner').hidden = !title;

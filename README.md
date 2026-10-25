@@ -3,10 +3,10 @@
 Note: the standard ATOMS3 (the non-Lite model) is not supported.
 
 ### 2026-10-25 update (Rev.5 only; Rev.3 and Rev.4 are unchanged and remain the hardware-tested fallbacks)
-- The carrier is keyed by level: every 10 ms the firmware works out from the clock whether the carrier should be on and corrects it, so a late callback delays an edge by at most 10 ms and, whatever happens, the next second is sent correctly. A clock step moves the edges with it: steps below about a tenth of a second leave every pulse readable, larger ones cost the pulse of the second they land in, which is left out rather than sent with a wrong length. Previously a lost edge could also spoil the following second.
+- Each pulse begins when the system clock's second changes and lasts 0.2, 0.5 or 0.8 s by the processor's monotonic clock, which no time adjustment touches: a pulse once begun keeps its length and so its meaning. A clock adjustment only moves the start of the following pulses; a second that begins while a pulse is still running, or that is begun late, gets no pulse rather than a wrong one. Adjustments below about a tenth of a second leave every pulse in place. Previously a lost or delayed edge could also spoil the following second.
 - With a valid RTC time the signal starts at once, before Wi-Fi, and the 3 s start-up delay is gone.
 - No more restarts because of Wi-Fi while the time is valid: the device reconnects every minute and restarts only after about six hours without a connection. When the router rejects the connection outright, when there is no valid time, or when no Wi-Fi settings are stored, it restarts after about four minutes, which reopens the configuration portal. After a changed Wi-Fi password, hold the button at reset to open the portal at once (see 8(3)).
-- The RTC is written so that its seconds start on the system clock's: the write allows for the time the chip takes to make its first increment after a restart (0.508 s on the PCF8563; a clone may take 1 s), then the device watches the RTC's first change of seconds, corrects its timing if that was off, and logs the result. At start-up the RTC is read when its seconds change. The time taken from it should then be within a few milliseconds instead of up to two seconds off; the log line "RTCx: its seconds begin ... from the system clock's" shows what was achieved. A write interrupted by a power failure, or that failed half-way, leaves a marker that is checked at the next start, and an RTC that does not advance is rejected too; in both cases the device waits for NTP.
+- The RTC is written so that its seconds start on the system clock's: the write allows for the time the chip takes to make its first increment after a restart (0.508 s on the PCF8563; a clone may take 1 s), then the device watches the RTC's first change of seconds, corrects its timing if that was off, and logs the result. At start-up the RTC is read when its seconds change. The time taken from it should then be within a few milliseconds of the time it was given, plus the RTC's own drift since then, instead of up to two seconds off; the log line "RTCx: its seconds begin ... from the system clock's" shows what was achieved. A write interrupted by a power failure, or that failed half-way, leaves a marker that is checked at the next start, and an RTC that does not advance is rejected too; in both cases the device waits for NTP.
 - The statistics line and the NTP status are printed from `loop()`, no longer from the Ticker task or the network task.
 - "Sync time now" on the page restarts NTP inside the TCP/IP task on board package 2.x.
 - Compile-checked on both board packages and both boards; not yet tested on hardware.
@@ -42,7 +42,7 @@ Note: the standard ATOMS3 (the non-Lite model) is not supported.
 - ATOM Lite/Matrix: version 2.x of the board package (with the Rev.3 library versions) or version 3.x.
 - No extra libraries are needed: the web server, mDNS and settings storage come with the board package.
 - Rev.5 has been compile-tested, but not yet tested on hardware.
-- Beyond Rev.4, Rev.5 keys the carrier by level, starts the signal before Wi-Fi, avoids restarts while the time is valid, and sets and reads the RTC on the second: see the 2026-10-25 update.
+- Beyond Rev.4, Rev.5 times each pulse by the processor's monotonic clock, starts the signal before Wi-Fi, avoids restarts while the time is valid, and sets and reads the RTC on the second: see the 2026-10-25 update.
 
 Compiles with:
 
@@ -178,7 +178,7 @@ Reference (Qiita, in Japanese): [Trial and error with recovery handling for ESP3
 ### (2) Using an RTC
 Even if Wi-Fi is temporarily unavailable at power-on or after a reset, the device still transmits the JJY signal, based on the time held in the RTC (real-time clock). To make this possible, the RTC's time is updated whenever the time is synchronised via NTP, and the RTC keeps the current time based on its most recent update. To use this feature, connect an RTC unit to the M5Atom's GROVE port. In our experience, an RTC unit connected with a 20 cm GROVE cable was unreliable, whereas with a 10 cm cable it worked reliably.
 
-In Rev.5 the RTC is written so that its seconds start on the system clock's, checked and corrected after each write, and read at start-up when its seconds change, so the time taken from it should be within a few milliseconds; the serial log shows the result of each write. If a write was interrupted or failed half-way, or the RTC does not advance, it is ignored until NTP has set the time.
+In Rev.5 the RTC is written so that its seconds start on the system clock's, checked and corrected after each write, and read at start-up when its seconds change, so the time taken from it should be within a few milliseconds of the time it was given, plus the RTC's own drift since then; the serial log shows the result of each write. If a write was interrupted or failed half-way, or the RTC does not advance, it is ignored until NTP has set the time.
 
 Examples of RTC units you can use:
 - [Real-Time Clock (RTC) Unit with HYM8563 for M5Stack](https://www.switch-science.com/catalog/7482/) (Switch Science, in Japanese)
