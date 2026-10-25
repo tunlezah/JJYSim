@@ -11,7 +11,8 @@ class Pcf8563 {
   int ReadTime(struct tm *tm_now);
   int WriteTime(struct tm *tm_now);
   int WriteTimeAtSecond(struct tm *tm_now);  // with the clock stopped and started again: its seconds begin some time after the start
-  bool WriteInterrupted() const { return m_write_interrupted; }  // Begin() found the marker of an unfinished or failed WriteTimeAtSecond()
+  bool TimeStale() const { return m_time_stale; }  // Begin() found the marker: an unfinished or failed WriteTimeAtSecond(), or MarkTimeStale()
+  int  MarkTimeStale();  // the time is not to be trusted at the next start, until WriteTimeAtSecond() has completed
   int64_t StartedAfterUs(int64_t from_us) const { return m_started_us - from_us; }  // when the clock was last started, for checking the timing
 
   int SetAlarm(int miniute = -1, int hour = -1, int day = -1, int weekday = -1);
@@ -89,7 +90,7 @@ class Pcf8563 {
 
   TwoWire *m_wire;
   uint8_t *m_reg;
-  bool     m_write_interrupted = false;
+  bool     m_time_stale = false;
   int64_t  m_started_us = 0;
 
   size_t ReadReg(int reg_start, size_t read_length);

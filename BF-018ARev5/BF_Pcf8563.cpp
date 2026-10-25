@@ -6,10 +6,11 @@
 #include "BF_Log.h"
 #include "BF_Pcf8563.h"
 
-// WriteTimeAtSecond() keeps a marker in the timer register (0Fh) while it runs. The timer is never enabled here, so
-// the register is free, and M5Unified's own RTC start-up (M5.begin() with external_rtc) writes 00h, 01h, 09h to
-// 0Ch and 0Eh but not 0Fh, so the marker survives it. If Begin() finds the marker, the last write was interrupted
-// or failed half-way, and the time is stale; the marker is then kept until a write completes.
+// WriteTimeAtSecond() keeps a marker in the timer register (0Fh) while it runs, and MarkTimeStale() sets it for good.
+// The timer is never enabled here, so the register is free, and M5Unified's own RTC start-up (M5.begin() with
+// external_rtc) writes 00h, 01h, 09h to 0Ch and 0Eh but not 0Fh, so the marker survives it. If Begin() finds the
+// marker, the last write was interrupted or failed half-way, or the time was marked stale: the time is not to be
+// trusted, and the marker is kept until a write completes.
 static const int     write_marker_reg   = 0x0f;
 static const uint8_t write_marker_value = 0xaa;  // the timer register is otherwise cleared to 0
 
@@ -17,14 +18,21 @@ int Pcf8563::Begin(TwoWire &wire)
 {
   m_wire = &wire;
 
-  // a marker that cannot be read counts as set: the time is then not trusted until a write has completed
-  m_write_interrupted = (ReadReg(write_marker_reg, 1) != 1) || (m_reg[write_marker_reg] == write_marker_value);
-
-  // clear registers
+  // clear registers, the control register first: its write also shows whether the RTC answers at all
   external_clock_test_mode = false;
   source_clock_stoped      = false;
   power_on_reset_override  = false;  // TESTC: 0 for normal operation (data sheet table 6); 1 lets a bus pattern reset the chip
   if (WriteControl() != 0) return 1;
+
+  // the marker, before the timer register is written: one that cannot be read (three tries) counts as set, and the
+  // time is then not trusted until a write has completed
+  m_time_stale = true;
+  for (int i = 0; i < 3; ++i) {
+    if (ReadReg(write_marker_reg, 1) == 1) {
+      m_time_stale = (m_reg[write_marker_reg] == write_marker_value);
+      break;
+    }
+  }
 
   clock_out_active =false;
   clock_out        = fco_32768Hz;
@@ -37,9 +45,9 @@ int Pcf8563::Begin(TwoWire &wire)
   if (WriteAlarm() != 0) return 1;
 
   timer_enable = false;
-  timer_source = fts_4096Hz;
+  timer_source = fts_1_60th_Hz;  // the timer's clock when it is not in use, for the lowest current (data sheet 8.8.1, table 23)
   timer        = 0;
-  if (m_write_interrupted) {
+  if (m_time_stale) {
     // The marker stays until a WriteTimeAtSecond() completes, so that the stale time is still known as such at
     // the next start if this one never gets to write the RTC. Only the timer control register is cleared.
     m_reg[0x0e] = timer_source;
@@ -103,8 +111,17 @@ int Pcf8563::WriteTimeAtSecond(struct tm *tm_now)
   m_started_us = esp_timer_get_time();
   if (result != 0) return result;     // the time may be half written: the marker stays, so it is not trusted next time
   if (WriteTimer() != 0) return 1;    // clears the marker (the timer is off)
-  m_write_interrupted = false;
+  m_time_stale = false;
   return 0;
+}
+
+// Mark the time as not to be trusted until the next WriteTimeAtSecond() completes: Begin() then reports TimeStale()
+// at the next start. For a time that has become wrong for the system, such as the local time of a time zone no
+// longer in use.
+int Pcf8563::MarkTimeStale()
+{
+  m_reg[write_marker_reg] = write_marker_value;
+  return WriteReg(write_marker_reg, 1);
 }
 
 // to enable alarm, give valid value for arguments of minute, hour, day, weekday

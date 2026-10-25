@@ -8,6 +8,8 @@
 #include <WiFi.h>
 #include <WiFiManager.h>  // https://github.com/tzapu/WiFiManager
 #include <esp_timer.h>
+#include <esp_system.h>  // esp_register_shutdown_handler()
+#include <driver/gpio.h>  // gpio_reset_pin()
 #if ESP_ARDUINO_VERSION_MAJOR < 3
 #include <lwip/tcpip.h>   // tcpip_callback(): the web UI's time sync restarts SNTP in the TCP/IP task on board package 2.x
 #endif
@@ -257,6 +259,18 @@ const uint32_t ledc_duty_off(0);    // 0
 tco_stats_t  tco_stats = {};
 portMUX_TYPE tco_stats_mux = portMUX_INITIALIZER_UNLOCKED;
 
+volatile bool tco_stopped(false);  // set by TcoShutdown() before a restart: TcoGen() starts no new pulse
+
+// A software restart (ESP.restart(), also WiFiManager's) resets the processor but not the LEDC: a carrier that is on
+// would stay on through the whole restart, one pulse of a second or more. esp_restart() calls this before the
+// restart, in the task that asked for it: let a pulse in progress end (0.8s at most), then make sure the carrier is off.
+void TcoShutdown()
+{
+  tco_stopped = true;
+  delay(900);
+  CarrierWrite(ledc_duty_off);
+}
+
 void TcoInit()
 {
   if (M5.getBoard() == m5::board_t::board_M5AtomS3Lite) {
@@ -279,6 +293,9 @@ void TcoInit()
   // start Ticker for TCO
   // No need to align the Ticker to the second: TcoGen() reads the clock on every call.
   tk.attach_ms(ticker_interval_ms, TcoGen);
+  if (esp_register_shutdown_handler(TcoShutdown) != ESP_OK) {
+    Log.print("TCO: no shutdown handler: a restart may leave the carrier on until TcoInit()\n");
+  }
 }
 
 // main task of TCO: every 10ms in the Ticker (esp_timer) task
@@ -305,8 +322,8 @@ void TcoGen()
   if (!localtime_valid) {
     if (tk_carrier) {
       tk_carrier = false;
-      tk_off_us = esp_timer_get_time();
       TcOff();
+      tk_off_us = esp_timer_get_time();
     }
     tk_last_slot = -1;
     tk_sec = 0;
@@ -325,8 +342,8 @@ void TcoGen()
   int64_t now_us = esp_timer_get_time();
   if (tk_carrier && now_us - tk_pulse_end_us >= 0) {
     tk_carrier = false;
-    tk_off_us = now_us;
     TcOff();
+    tk_off_us = esp_timer_get_time();  // after the write: the gap counts from when the carrier really went off
     switch (tk_pulse_slots) {
       case 2:  Log.printf(" %d ", tk_pulse_sec);  break;  // marker
       case 5:  Log.print("1");  break;
@@ -345,14 +362,15 @@ void TcoGen()
   if (ts.tv_sec != tk_sec) {
     tk_sec = ts.tv_sec;
     localtime_r(&ts.tv_sec, &td);  // td from the same clock reading as ts
-    if (!tk_carrier && now_us - tk_off_us >= tk_min_gap_us && ts.tv_nsec < tk_late_limit_ns) {
+    if (!tk_carrier && !tco_stopped && now_us - tk_off_us >= tk_min_gap_us && ts.tv_nsec < tk_late_limit_ns) {
       int value = TcoValue();
       tk_pulse_slots  = (value == marker) ? 2 : (value != 0) ? 5 : 8;  // 0.2s, 0.5s, 0.8s
       tk_pulse_sec    = td.tm_sec;
-      // ends on the call nearest to the length: the calls come every ticker_interval_ms, this one began the pulse
-      tk_pulse_end_us = now_us + (int64_t)tk_pulse_slots * 100000LL - (int64_t)ticker_interval_ms * 500LL;
       tk_carrier = true;
       TcOn();
+      // The length counts from when the carrier really went on, and the pulse ends on the call nearest to it: the
+      // calls come every ticker_interval_ms, and this one began the pulse.
+      tk_pulse_end_us = esp_timer_get_time() + (int64_t)tk_pulse_slots * 100000LL - (int64_t)ticker_interval_ms * 500LL;
     }
     if (td.tm_sec == 0) {
       Log.print(&td, "\n%A %B %d %Y %H:%M:%S\n");  // after the carrier write, so the minute marker's edge is not delayed
@@ -660,6 +678,21 @@ void WebUiSetLed(bool enable)
   led_enable = enable;
 }
 
+// The RTC holds local time, which the next start would read in the new time zone: mark it stale, so that the device
+// waits for NTP instead, and leave the RTC alone until the restart. The next RTC update after NTP clears the mark.
+void WebUiTimeZoneSaving(const char *time_zone)
+{
+  if (rtcx_available && strcmp(time_zone, settings.time_zone) != 0) {
+    rtcx_available = false;
+    bool marked = false;
+    for (int i = 0; i < 3 && !marked; ++i) {
+      marked = (rtcx.MarkTimeStale() == 0);
+    }
+    Log.print(marked ? "[Web]time zone changed: the RTC's time will not be used until NTP has set the clock\n"
+                     : "[Web]time zone changed, but the RTC could not be marked: its old time may be used until NTP\n");
+  }
+}
+
 #if ESP_ARDUINO_VERSION_MAJOR < 3
 static void SntpRestart(void *)
 {
@@ -690,6 +723,15 @@ const int button_atoms3(41);  // GPIO41
 
 void setup()
 {
+  // A restart that does not go through esp_restart() (a crash, a watchdog) skips TcoShutdown(): it resets the
+  // processor but not the LEDC, so a carrier that was on would run on through the whole start-up. Take the carrier
+  // pin off the LEDC at once; TcoInit() attaches it again.
+#if defined (CONFIG_IDF_TARGET_ESP32S3)
+  gpio_reset_pin((gpio_num_t)ledc_pin_atoms3);
+#else
+  gpio_reset_pin((gpio_num_t)ledc_pin_atom);
+#endif
+
   // Wi-Fi issue caused by the CH552 on ATOM Lite/Matrix: M5.begin() applies M5Unified's own countermeasure
   // (it drives GPIO0 HIGH), so the Rev.2 workaround of driving GPIO0 LOW is not needed here.
   // https://twitter.com/wakwak_koba/status/1553162622479974400
@@ -728,12 +770,12 @@ void setup()
     leds[i] = 0;
   }
 
-  // Unit RTC (External)
-  if (rtcx.Begin(Wire) == 0) {
-    rtcx_available = true;
-    if (SetTimeFromRtcx(settings.time_zone)) {
-      localtime_valid = true;
-    }
+  // Unit RTC (External): up to three tries, so that one I2C error does not cost the RTC for the whole uptime
+  for (int i = 0; i < 3 && !rtcx_available; ++i) {
+    rtcx_available = (rtcx.Begin(Wire) == 0);
+  }
+  if (rtcx_available && SetTimeFromRtcx(settings.time_zone)) {
+    localtime_valid = true;
   }
   if (!localtime_valid) {
     Log.print("RTC not valid: set the localtime temporarily\n");

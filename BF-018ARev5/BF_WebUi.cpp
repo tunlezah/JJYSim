@@ -188,6 +188,7 @@ static void HandleSettings()
     SendJson(400, "{\"ok\":false,\"error\":\"invalid\"}");
     return;
   }
+  WebUiTimeZoneSaving(time_zone.c_str());
   if (!SaveSettings(frequency, time_zone, ntp_server)) {
     SendJson(500, "{\"ok\":false,\"error\":\"not saved\"}");
     return;

@@ -288,7 +288,7 @@ pre{margin:0;max-height:20em;overflow:auto;background:#0b0d0f;border:1px solid v
 </form>
 </section>
 <section class="card" aria-labelledby="tmTitle">
-<div><h2 id="tmTitle">Signal timing</h2><span class="sub">How evenly the 100 ms slots that switch the carrier start, since the last restart. Updated every minute.</span></div>
+<div><h2 id="tmTitle">Signal timing</h2><span class="sub">How evenly the timer that sends the time code runs: when its first call in each 100 ms slot comes, since the last restart. Updated every minute.</span></div>
 <span id="tmNone" class="sub">Timing statistics appear a minute after the time code starts.</span>
 <div id="tmSome" class="stack" hidden>
 <div><div id="tmShare" class="big">-</div><span class="sub">of slots within ±0.05 ms of schedule</span></div>
@@ -556,7 +556,7 @@ function renderBanner() {
   let title = '', text = '', info = false;
   if (forgotten) {
     title = 'Wi-Fi settings erased';
-    text = 'The simulator restarted into its setup hotspot. Connect to that network to give it Wi-Fi settings again.';
+    text = 'The simulator restarted and opens its setup hotspot for a minute after each start; without Wi-Fi settings it restarts every few minutes. Connect to that network to give it Wi-Fi settings again.';
     info = true;
   }
   else if (restarting) {
@@ -566,7 +566,7 @@ function renderBanner() {
   }
   else if (lost && lastOk) {
     title = 'No response from the simulator for ' + (silent < 60 ? silent + ' s' : Math.floor(silent / 60) + ' min');
-    text = 'If its Wi-Fi dropped, it tries to reconnect every 60 seconds; while its time is valid it restarts only after about six hours without Wi-Fi, otherwise after about four minutes. '
+    text = 'If its Wi-Fi dropped, it tries to reconnect every 60 seconds. While its time is valid it restarts only after about six hours without Wi-Fi; without a valid time, or when the router rejects the connection, after about four minutes. '
       + 'This page keeps trying and shows the last values it received.';
   }
   $('banner').hidden = !title;
