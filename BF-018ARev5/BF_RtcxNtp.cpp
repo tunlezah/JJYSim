@@ -6,7 +6,8 @@
 #include "BF_Pcf8563.h"
 #include "BF_RtcxNtp.h"
 
-bool sntp_sync_status_complete(false);
+volatile bool                      sntp_sync_status_complete(false);                   // set by the SNTP callback, cleared in loop()
+static volatile sntp_sync_status_t sntp_sync_status_last(SNTP_SYNC_STATUS_RESET);  // what the callback saw, printed in loop()
 
 void NtpBegin(const char* time_zone, const char* ntp_server)
 {
@@ -20,8 +21,9 @@ void NtpBegin(const char* time_zone, const char* ntp_server)
 
 void SntpTimeSyncNotificationCallback(struct timeval *tv)
 {
+  // Runs in the TCP/IP task, whose stack is small on board package 2.x: nothing is printed here, loop() prints.
   sntp_sync_status_t sntp_sync_status = sntp_get_sync_status();
-  PrintSntpStatus("SNTP callback:", sntp_sync_status);
+  sntp_sync_status_last = sntp_sync_status;
   if (sntp_sync_status == SNTP_SYNC_STATUS_COMPLETED) {
     sntp_sync_status_complete = true;
   }
@@ -29,27 +31,40 @@ void SntpTimeSyncNotificationCallback(struct timeval *tv)
 
 bool RtcxUpdate(bool rtcx_avail)
 {
-  if (sntp_sync_status_complete) {
-    sntp_sync_status_complete = false;
-
-    struct tm tm_sync;
-    getLocalTime(&tm_sync);
-    Log.print(&tm_sync, "SNTP sync: %A, %B %d %Y %H:%M:%S\n");
-    // print sample: must be < 64
-    //....:....1....:....2....:....3....:....4....:....5....:....6....
-    //SNTP sync: Wednesday, September 11 2021 11:10:46
-
-    if (rtcx_avail) {
-      if (rtcx.WriteTime(&tm_sync) == 0) {
-        Log.print("RTCx updated\n");
-      }
-      else {
-        Log.print("RTCx update failed\n");
-      }
-    }
-    return true;
+  if (!sntp_sync_status_complete) {
+    return false;
   }
-  return false;
+  sntp_sync_status_complete = false;
+  PrintSntpStatus("SNTP callback:", sntp_sync_status_last);
+
+  struct tm tm_sync;
+  getLocalTime(&tm_sync);
+  Log.print(&tm_sync, "SNTP sync: %A, %B %d %Y %H:%M:%S\n");
+  // print sample: must be < 64
+  //....:....1....:....2....:....3....:....4....:....5....:....6....
+  //SNTP sync: Wednesday, September 11 2021 11:10:46
+
+  if (rtcx_avail) {
+    // Write the RTC at the start of a second: wait for the system clock's second to change (up to 1s, here in
+    // loop()), then write that second with the RTC's clock stopped and start it again, so that the RTC's seconds
+    // begin within a few ms of the system clock's instead of up to a second apart.
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    time_t sec = tv.tv_sec;
+    unsigned long wait_start_ms = millis();
+    while (tv.tv_sec == sec && millis() - wait_start_ms < 1100) {
+      delay(1);
+      gettimeofday(&tv, NULL);
+    }
+    localtime_r(&tv.tv_sec, &tm_sync);
+    if (rtcx.WriteTimeAtSecond(&tm_sync) == 0) {
+      Log.print("RTCx updated\n");
+    }
+    else {
+      Log.print("RTCx update failed\n");
+    }
+  }
+  return true;
 }
 
 void PrintSntpStatus(const char* header, sntp_sync_status_t sntp_sync_status)
@@ -78,9 +93,20 @@ bool SetTimeFromRtcx(const char* time_zone)
 
   // Accept only years after 2016: getLocalTime() treats older times as not set, and a 19xx year means the
   // RTC was set by other software (opposite century bit, and often UTC), so wait for NTP instead.
-  if (rtcx.ReadTime(&tm_init) == 0 && tm_init.tm_year > 116) {
+  // An RTC whose clock was found stopped at start-up holds a stale time (a write was interrupted): wait too.
+  if (rtcx.ReadTime(&tm_init) == 0 && !rtcx.ClockWasStopped() && tm_init.tm_year > 116) {
+    // Read the RTC at the start of a second: poll until its seconds change (up to 1s), so that the system clock
+    // is set within a few ms of the RTC rather than up to a second late.
+    struct tm tm_now = tm_init;
+    unsigned long wait_start_ms = millis();
+    while (tm_now.tm_sec == tm_init.tm_sec && millis() - wait_start_ms < 1100) {
+      if (rtcx.ReadTime(&tm_now) != 0) {
+        tm_now = tm_init;  // keep the first reading if the RTC stops answering
+        break;
+      }
+    }
     rtcx_valid = true;
-    struct timeval tv = { mktime(&tm_init), 0 };
+    struct timeval tv = { mktime(&tm_now), 0 };
     settimeofday(&tv, NULL);
     Log.print("RTCx valid, the localtime was set\n");
   } else {

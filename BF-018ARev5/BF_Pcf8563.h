@@ -10,6 +10,8 @@ class Pcf8563 {
   int Begin(TwoWire &wire);
   int ReadTime(struct tm *tm_now);
   int WriteTime(struct tm *tm_now);
+  int WriteTimeAtSecond(struct tm *tm_now);  // with the clock stopped and started again: its seconds begin on the start
+  bool ClockWasStopped() const { return m_clock_was_stopped; }  // Begin() found the clock stopped: the time is stale
 
   int SetAlarm(int miniute = -1, int hour = -1, int day = -1, int weekday = -1);
   int DisableAlarm();
@@ -86,6 +88,7 @@ class Pcf8563 {
 
   TwoWire *m_wire;
   uint8_t *m_reg;
+  bool     m_clock_was_stopped = false;
 
   size_t ReadReg(int reg_start, size_t read_length);
   int    WriteReg(int reg_start, size_t write_length);

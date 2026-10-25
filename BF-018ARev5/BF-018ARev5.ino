@@ -8,6 +8,9 @@
 #include <WiFi.h>
 #include <WiFiManager.h>  // https://github.com/tzapu/WiFiManager
 #include <esp_timer.h>
+#if ESP_ARDUINO_VERSION_MAJOR < 3
+#include <lwip/tcpip.h>   // tcpip_callback(): the web UI's time sync restarts SNTP in the TCP/IP task on board package 2.x
+#endif
 #include "BF_Log.h"
 #include "BF_Pcf8563.h"
 #include "BF_RtcxNtp.h"
@@ -32,19 +35,34 @@ const char* web_password = "";  // set a password to allow changes from the web 
 struct tm       td;  // time of day: year, month, day, day of week, hour, minute, second
 struct timespec ts;  // time spec: second, nano-second
 
+// statistics of the 100ms slots, copied once a minute for loop() to print and for the web UI
+// (defined before the first function: the Arduino build inserts its prototypes there, and TcoStatsGet() returns it)
+struct tco_stats_t {
+  uint32_t seq;  // counts the copies: loop() prints when it changes
+  int      count;
+  int      distribution[9];
+  double   sum;
+  double   sq_sum;
+  int      min;
+  int      max;
+};
+
 //..:....1....:....2....:....3....:....4....:....5....:....6....:....7..
 // for NTP
-bool   rtcx_available(false);
-bool   localtime_valid(false);
-time_t ntp_last_sync(0);  // when SNTP last set the time, 0: not yet
+bool          rtcx_available(false);
+volatile bool localtime_valid(false);  // set in loop(), read by the Ticker task
+time_t        ntp_last_sync(0);        // when SNTP last set the time, 0: not yet
 
 //..:....1....:....2....:....3....:....4....:....5....:....6....:....7..
 // for WiFi
 const          int wifi_config_portal_timeout_sec(60);
 const unsigned int wifi_retry_interval_ms(60000);
       unsigned int wifi_retry_last_ms(0);
-const          int wifi_retry_max_times(3);
+const          int wifi_retry_max_times(3);       // restart after this many failed retries while there is no valid time or no stored Wi-Fi
+const          int wifi_restart_retry_times(360); // with a valid time, restart only after this many (about 6 hours): a stuck Wi-Fi driver
                int wifi_retry_times(0);
+              bool wifi_saved(false);              // Wi-Fi settings are stored, set in setup()
+              bool wifi_portal_active(false);      // the configuration portal is running (green LED)
 
 wl_status_t wifi_status(WL_NO_SHIELD);
 const char* wl_status_str[] = {
@@ -92,13 +110,22 @@ enum led_b_t {
   led_b_on,    // TCO on
 };
 led_r_t led_r(led_r_off);
-led_g_t led_g(led_g_off);
-led_b_t led_b(led_b_off);
+led_b_t led_b(led_b_off);  // green: see LedGreen()
 
 bool led_enable(true);
 
 //..:....1....:....2....:....3....:....4....:....5....:....6....:....7..
 // LED
+// green: the configuration portal, else whether the time is valid. Worked out here instead of being written by
+// the Ticker task and the portal callback.
+led_g_t LedGreen()
+{
+  if (wifi_portal_active) {
+    return led_g_on;
+  }
+  return localtime_valid ? led_g_off : led_g_slow;
+}
+
 void LedShow()
 {
   CRGB led(0);
@@ -109,7 +136,7 @@ void LedShow()
       case led_r_slow: led.r = LedBlink(blink_slow_ms) ? led_on_r : 0;  break;
       default:  break;  // led.r = 0
     }
-    switch (led_g) {
+    switch (LedGreen()) {
       case led_g_on  : led.g = led_on_g;  break;
       case led_g_fast: led.g = LedBlink(blink_fast_ms) ? led_on_g : 0;  break;
       case led_g_slow: led.g = LedBlink(blink_slow_ms) ? led_on_g : 0;  break;
@@ -164,38 +191,33 @@ void WifiCheck()
   }
   wifi_retry_last_ms = millis();
 
-  // reboot if wifi connection fails
-  if (wifi_status == WL_CONNECT_FAILED) {
-    Log.print("[WiFi]connect failed: rebooting..\n");
-    ESP.restart();
-    return;
-  }
-
-  // let the wifi process do if wifi is not disconnected
-  if (wifi_status != WL_DISCONNECTED) {
+  // let the wifi process do unless it has given up: connected, or still trying (WL_NO_SSID_AVAIL, WL_IDLE_STATUS, ..)
+  if (wifi_status != WL_DISCONNECTED && wifi_status != WL_CONNECT_FAILED) {
     wifi_retry_times = 0;
     return;
   }
+  ++wifi_retry_times;
 
-  // reboot if wifi is disconnected for a long time
-  if (++wifi_retry_times > wifi_retry_max_times) {
-    Log.print("[WiFi]disconnect timeout: rebooting..\n");
+  // A restart silences the time signal for about a minute, so while the time is valid it is only the last resort,
+  // for a stuck Wi-Fi driver. Without stored Wi-Fi settings or without a valid time, restart as before: that reopens
+  // the configuration portal, and there is no time signal to lose.
+  int restart_after = (wifi_saved && localtime_valid) ? wifi_restart_retry_times : wifi_retry_max_times;
+  if (wifi_retry_times > restart_after) {
+    Log.print("[WiFi]not connected for too long: rebooting..\n");
     ESP.restart();
     return;
   }
 
-  // reconnect, and reboot if reconnection fails
+  // reconnect with the stored settings. WiFi.reconnect() fails while the driver is still busy with its own attempt,
+  // and the driver does not retry by itself after WL_CONNECT_FAILED, so disconnect first and start again.
   Log.printf("[WiFi]reconnect %d\n", wifi_retry_times);
-  if (!WiFi.reconnect()) {
-    Log.print("[WiFi]reconnect failed: rebooting..\n");
-    ESP.restart();
-    return;
-  };
+  WiFi.disconnect();
+  WiFi.begin();
 }
 
 void WifiConfigModeCallback(WiFiManager *wm)
 {
-  led_g = led_g_on;  // green LED indicates configuration portal is active
+  wifi_portal_active = true;  // green LED indicates configuration portal is active
   LedShow();
 }
 
@@ -215,15 +237,7 @@ const uint32_t ledc_duty_off(0);    // 0
       uint8_t  ledc_pin(ledc_pin_atom);
       uint32_t ledc_frequency(0);   // the carrier LEDC makes: close to settings.jjy_frequency
 
-// statistics of the 100ms slots, copied once a minute for the web UI
-struct tco_stats_t {
-  int    count;
-  int    distribution[9];
-  double average;
-  double std_deviation;
-  int    min;
-  int    max;
-};
+// statistics of the 100ms slots (tco_stats_t is defined at the top)
 tco_stats_t  tco_stats = {};
 portMUX_TYPE tco_stats_mux = portMUX_INITIALIZER_UNLOCKED;
 
@@ -251,7 +265,7 @@ void TcoInit()
   tk.attach_ms(ticker_interval_ms, TcoGen);
 }
 
-// main task of TCO
+// main task of TCO: every 10ms in the Ticker (esp_timer) task
 void TcoGen()
 {
   // statistics of ts_nsec
@@ -262,31 +276,70 @@ void TcoGen()
   static double tk_sq_sum(0.0);
   static int    tk_distribution[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
   static int    tk_last_nsec(0);
-  static int    tk_last_slot(-1);  // the 100ms slot handled last
+  static int    tk_last_slot(-1);   // the 100ms slot handled last
+  static time_t tk_sec(0);          // the second whose time code value is in tk_on_slots
+  static int    tk_on_slots(0);     // the carrier is on in slots 0 .. tk_on_slots-1 of that second: 2, 5 or 8
+  static bool   tk_carrier(false);  // the carrier state last written
+  static time_t tk_off_sec(0);      // the second in which the carrier was last switched off
 
   if (!localtime_valid) {
-    led_g = led_g_slow;  // localtime not valid yet
+    if (tk_carrier) {
+      tk_carrier = false;
+      TcOff();
+    }
     tk_last_slot = -1;
+    tk_sec = 0;
     return;
   }
-  led_g = led_g_off;  // localtime valid
 
-  // Act on the first call in each 100ms slot. The slot is read from the clock every time,
-  // so the timing stays right when SNTP steps the clock.
+  // The carrier is keyed by level, not by edge: every call works out from the clock whether the carrier should be
+  // on right now, and writes it only when that changes. A clock step or a late call can then delay an edge by one
+  // call (10ms) at most but never lose it, and the rest of the second is always right.
   clock_gettime(CLOCK_REALTIME, &ts);
   int ts_100ms = ts.tv_nsec / 100000000;
+  if (ts.tv_sec < tk_sec) {
+    // The clock was stepped back. Within one second (an NTP correction) the second just sent plays again: leave
+    // the carrier as it is, so the pulse already sent is only stretched. Further back: start afresh with the new time.
+    if (tk_sec - ts.tv_sec > 1) {
+      tk_sec = 0;
+    }
+    else {
+      return;
+    }
+  }
+  if (ts.tv_sec != tk_sec) {
+    tk_sec = ts.tv_sec;
+    localtime_r(&ts.tv_sec, &td);  // td from the same clock reading as ts
+    int value = TcoValue();
+    tk_on_slots = (value == marker) ? 2 : (value != 0) ? 5 : 8;  // 0.2s, 0.5s, 0.8s
+    if (td.tm_sec == 0) {
+      Log.print(&td, "\n%A %B %d %Y %H:%M:%S\n");
+    }
+  }
+  // on in the first tk_on_slots slots, and never on again in a second once it has been switched off: a small step
+  // back within the second would otherwise add a short extra pulse
+  bool carrier = (ts_100ms < tk_on_slots) && (tk_sec != tk_off_sec);
+  if (carrier != tk_carrier) {
+    tk_carrier = carrier;
+    if (carrier) {
+      TcOn();
+    }
+    else {
+      tk_off_sec = tk_sec;
+      TcOff();
+      switch (tk_on_slots) {
+        case 2:  Log.printf(" %d ", td.tm_sec);  break;  // marker
+        case 5:  Log.print("1");  break;
+        default: Log.print("0");  break;
+      }
+    }
+  }
+
+  // statistics: on the first call in each 100ms slot
   if (ts_100ms == tk_last_slot) {
     return;
   }
   tk_last_slot = ts_100ms;
-  localtime_r(&ts.tv_sec, &td);  // td from the same clock reading as ts
-  switch (ts_100ms) {
-    case 0: Tco000ms();  break;
-    case 2: Tco200ms();  break;
-    case 5: Tco500ms();  break;
-    case 8: Tco800ms();  break;
-    default:  break;
-  }
 
   if (tk_count++ != 0) {
     int tk_deviation = ts.tv_nsec - tk_last_nsec;
@@ -312,63 +365,57 @@ void TcoGen()
   }
   tk_last_nsec = ts.tv_nsec;
 
-  if ((td.tm_sec == 0) && (ts.tv_nsec < 100000000)) {
-    for (int i = 0; i < 9; ++i) {
-      Log.printf("%d ", tk_distribution[i]);
-    }
-    double tk_average = tk_sum / (double)tk_count;
-    double tk_variance = (tk_sq_sum - tk_sum * tk_sum / (double)tk_count) / (double)tk_count;
-    double tk_std_deviation = sqrt(tk_variance);
-    Log.printf("\nn= %d, ave= %.4f  sdv= %.4f  min= %d  max= %d\n", tk_count, tk_average, tk_std_deviation, tk_min, tk_max);
-
-    // for the web UI
+  // once a minute, a copy for loop() to print and for the web UI: nothing is formatted with %f in this task
+  if ((td.tm_sec == 0) && (ts_100ms == 0)) {
     portENTER_CRITICAL(&tco_stats_mux);
+    ++tco_stats.seq;
     tco_stats.count = tk_count;
     memcpy(tco_stats.distribution, tk_distribution, sizeof(tco_stats.distribution));
-    tco_stats.average       = tk_average;
-    tco_stats.std_deviation = tk_std_deviation;
-    tco_stats.min           = tk_min;
-    tco_stats.max           = tk_max;
+    tco_stats.sum    = tk_sum;
+    tco_stats.sq_sum = tk_sq_sum;
+    tco_stats.min    = tk_min;
+    tco_stats.max    = tk_max;
     portEXIT_CRITICAL(&tco_stats_mux);
   }
 }
 
-// TCO task at every 0ms
-void Tco000ms()
+// statistics of the 100ms slots: the latest copy, its average and standard deviation, and the line loop() prints
+tco_stats_t TcoStatsGet()
 {
-  TcOn();
-  if (td.tm_sec == 0) {
-    Log.print(&td, "\n%A %B %d %Y %H:%M:%S\n");
-  }
+  tco_stats_t stats;
+  portENTER_CRITICAL(&tco_stats_mux);
+  stats = tco_stats;
+  portEXIT_CRITICAL(&tco_stats_mux);
+  return stats;
 }
 
-// TCO task at every 200ms
-void Tco200ms()
+double TcoStatsAverage(const tco_stats_t &stats)
 {
-  if (TcoValue() == marker) {
-    TcOff();
-    Log.printf(" %d ", td.tm_sec);
-  }
+  return stats.count > 0 ? stats.sum / (double)stats.count : 0.0;
 }
 
-// TCO task at every 500ms
-void Tco500ms()
+double TcoStatsStdDeviation(const tco_stats_t &stats)
 {
-  if (TcoValue() != 0) {
-    TcOff();
-    if(TcoValue() != marker) {
-      Log.print("1");
-    }
+  if (stats.count <= 0) {
+    return 0.0;
   }
+  double variance = (stats.sq_sum - stats.sum * stats.sum / (double)stats.count) / (double)stats.count;
+  return variance > 0.0 ? sqrt(variance) : 0.0;
 }
 
-// TCO task at every 800ms
-void Tco800ms()
+void TcoStatsPrint()
 {
-  TcOff();
-  if (TcoValue() == 0) {
-    Log.print("0");
+  static uint32_t printed_seq(0);
+  tco_stats_t stats = TcoStatsGet();
+  if (stats.seq == printed_seq) {
+    return;
   }
+  printed_seq = stats.seq;
+  for (int i = 0; i < 9; ++i) {
+    Log.printf("%d ", stats.distribution[i]);
+  }
+  Log.printf("\nn= %d, ave= %.4f  sdv= %.4f  min= %d  max= %d\n",
+             stats.count, TcoStatsAverage(stats), TcoStatsStdDeviation(stats), stats.min, stats.max);
 }
 
 void TcOn()
@@ -543,10 +590,7 @@ void WebUiStatusJson(Print &out)
   char zone[16];
   strftime(zone, sizeof(zone), "%Z", &local_tm);
 
-  tco_stats_t stats;
-  portENTER_CRITICAL(&tco_stats_mux);
-  stats = tco_stats;
-  portEXIT_CRITICAL(&tco_stats_mux);
+  tco_stats_t stats = TcoStatsGet();
 
   const char* time_source = ntp_last_sync != 0 ? "ntp" : localtime_valid ? "rtc" : "none";
 
@@ -570,7 +614,7 @@ void WebUiStatusJson(Print &out)
   out.printf(",\"rssi\":%d,\"ip\":\"%s\",\"retries\":%d,\"retry_max\":%d}",
              WiFi.RSSI(), WiFi.localIP().toString().c_str(), wifi_retry_times, wifi_retry_max_times);
   out.printf(",\"led\":{\"enabled\":%s,\"r\":%d,\"g\":%d,\"b\":%d}",
-             led_enable ? "true" : "false", (int)led_r, (int)led_g, (int)led_b);
+             led_enable ? "true" : "false", (int)led_r, (int)LedGreen(), (int)led_b);
   out.printf(",\"stats\":{\"n\":%d,\"b\":[", stats.count);
   for (int i = 0; i < 9; ++i) {
     if (i != 0) {
@@ -579,7 +623,7 @@ void WebUiStatusJson(Print &out)
     out.print(stats.distribution[i]);
   }
   out.printf("],\"ave\":%.4f,\"sdv\":%.4f,\"min\":%d,\"max\":%d}}",
-             Finite(stats.average), Finite(stats.std_deviation), stats.min, stats.max);
+             Finite(TcoStatsAverage(stats)), Finite(TcoStatsStdDeviation(stats)), stats.min, stats.max);
 }
 
 void WebUiSetLed(bool enable)
@@ -587,9 +631,25 @@ void WebUiSetLed(bool enable)
   led_enable = enable;
 }
 
+#if ESP_ARDUINO_VERSION_MAJOR < 3
+static void SntpRestart(void *)
+{
+  sntp_stop();  // runs in the TCP/IP task
+  sntp_init();
+}
+#endif
+
+// restarting SNTP makes it ask the server now
 void WebUiSyncTime()
 {
-  NtpBegin(settings.time_zone, settings.ntp_server);  // restarting SNTP asks the server now
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  NtpBegin(settings.time_zone, settings.ntp_server);  // configTzTime() takes the lwIP core lock on board package 3.x
+#else
+  // board package 2.x has no lwIP core locking, so restart SNTP inside the TCP/IP task rather than from loop()
+  if (tcpip_callback(SntpRestart, nullptr) != ERR_OK) {
+    Log.print("[Web]time sync: the TCP/IP task did not take the request\n");
+  }
+#endif
 }
 
 //..:....1....:....2....:....3....:....4....:....5....:....6....:....7..
@@ -612,7 +672,6 @@ void setup()
   cfg.external_rtc = true;       // default=false. use Unit RTC.
                                  // Keep it: M5.begin() then starts Wire on the GROVE port, which rtcx.Begin(Wire) needs.
   M5.begin(cfg);
-  delay(3000);
 #if ARDUINO_USB_CDC_ON_BOOT && ARDUINO_USB_MODE
   // ATOMS3 Lite: Serial is the USB Serial/JTAG port (HWCDC). TcoGen() prints from the Ticker task, so it must not
   // wait for a USB host that has stopped reading: output that can't be queued at once is dropped instead.
@@ -664,6 +723,10 @@ void setup()
   //....:....1....:....2....:....3....:....4....:....5....:....6....
   //localtime: Wednesday, September 11 2021 11:10:46
 
+  // TCO start: before Wi-Fi, so that with a valid RTC time the signal starts at once and keeps going while
+  // WiFiManager connects or runs its portal (the Ticker task does not depend on this one)
+  TcoInit();
+
   // WiFi start
   WiFiManager wm;  // blocking mode only
 
@@ -681,14 +744,13 @@ void setup()
   wm.setAPCallback(WifiConfigModeCallback);
   wm.setHostname(web_hostname);  // the name the router shows
   wm.autoConnect();
+  wifi_portal_active = false;
+  wifi_saved = wm.getWiFiIsSaved();
   WiFi.setSleep(false);  // https://macsbug.wordpress.com/2021/05/02/buttona-on-m5stack-does-not-work-properly/
   wifi_retry_last_ms = millis() - wifi_retry_interval_ms;
 
   // NTP start
   NtpBegin(settings.time_zone, settings.ntp_server);
-
-  // TCO start
-  TcoInit();
 
   // web UI start
   WebUiBegin(web_hostname, web_user, web_password);
@@ -710,6 +772,7 @@ void loop()
     localtime_valid = true;  // SNTP sync completed
     ntp_last_sync = time(NULL);
   };
+  TcoStatsPrint();  // the once-a-minute statistics line, printed here rather than from the Ticker task
   WebUiHandle();
 
   // button: TCO monitor on/off

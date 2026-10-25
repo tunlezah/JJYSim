@@ -9,6 +9,9 @@ int Pcf8563::Begin(TwoWire &wire)
 {
   m_wire = &wire;
 
+  // A clock left stopped means a WriteTimeAtSecond() was interrupted: remember it, the time is then stale.
+  m_clock_was_stopped = (ReadControl() == 0) && source_clock_stoped;
+
   // clear registers
   external_clock_test_mode = false;
   source_clock_stoped      = false;
@@ -68,6 +71,18 @@ int Pcf8563::WriteTime(struct tm *tm_now)
   if (tm_now->tm_year >= 100)
     m_reg[0x07] |= 0x80;  // century bit
   return WriteReg(0x02, 7);
+}
+
+// Write the time with the clock stopped (STOP resets the divider chain), then start it: the RTC's seconds begin
+// exactly when it is started, so call this at the start of a second.
+int Pcf8563::WriteTimeAtSecond(struct tm *tm_now)
+{
+  source_clock_stoped = true;
+  if (WriteControl() != 0) return 1;
+  int result = WriteTime(tm_now);
+  source_clock_stoped = false;
+  if (WriteControl() != 0) return 1;  // the clock stays stopped: Begin() reports that at the next start
+  return result;
 }
 
 // to enable alarm, give valid value for arguments of minute, hour, day, weekday

@@ -2,6 +2,14 @@
 ## A JJY radio time signal simulator that runs on the ATOMS3 Lite and ATOM Lite/Matrix
 Note: the standard ATOMS3 (the non-Lite model) is not supported.
 
+### 2026-10-25 update (Rev.5 only; Rev.3 and Rev.4 are unchanged and remain the hardware-tested fallbacks)
+- The carrier is keyed by level: every 10 ms the firmware works out from the clock whether the carrier should be on and corrects it, so a clock step or a late callback can delay an edge by 10 ms but never lose it. Previously a step of more than 100 ms, for example the first NTP reply after starting from the RTC, could corrupt one bit.
+- With a valid RTC time the signal starts at once, before Wi-Fi, and the 3 s start-up delay is gone.
+- No more restarts because of Wi-Fi while the time is valid: the device reconnects every minute and restarts only after about six hours without Wi-Fi. Without a valid time, or without stored Wi-Fi settings, it restarts after four minutes as before, which reopens the configuration portal.
+- The RTC is written and read at the start of a second, so the time taken from it is within a few milliseconds instead of up to two seconds late. A write interrupted by a power failure is detected at the next start, and the RTC is then ignored until NTP.
+- The statistics line and the NTP status are printed from `loop()`, no longer from the Ticker task or the network task.
+- "Sync time now" on the page restarts NTP inside the TCP/IP task on board package 2.x.
+- Compile-checked on both board packages and both boards; not yet tested on hardware.
 ### 2026-10-24 update
 - Rev.3, and Rev.5 on board package 2.x: the USB serial timeout on the ATOMS3 Lite is now 1 ms instead of 0. From arduino-esp32 2.0.15 on, including every 3.x core, a timeout of 0 makes the serial driver retry for weeks when a connected PC stops reading, which would stop the time signal. The 2.0.14 core in M5Stack board package 2.1.4 was not affected. This concerns the default USB mode, "Hardware CDC and JTAG".
 - Rev.4: the same serial timeout as Rev.5 was added, so a PC that stops reading can't delay the time signal.
@@ -34,6 +42,7 @@ Note: the standard ATOMS3 (the non-Lite model) is not supported.
 - ATOM Lite/Matrix: version 2.x of the board package (with the Rev.3 library versions) or version 3.x.
 - No extra libraries are needed: the web server, mDNS and settings storage come with the board package.
 - Rev.5 has been compile-tested, but not yet tested on hardware.
+- Beyond Rev.4, Rev.5 keys the carrier by level, starts the signal before Wi-Fi, avoids restarts while the time is valid, and sets and reads the RTC on the second: see the 2026-10-25 update.
 
 Compiles with:
 
@@ -124,6 +133,7 @@ We have made a printed circuit board (PCB) that an M5Atom can be mounted on.
 
 - After power-on or a reset, the device first starts the Wi-Fi connection process.
 - Once the Wi-Fi connection is established, it gets the date and time via NTP and starts transmitting the time signal.
+- Rev.5 with an RTC that holds a valid time starts transmitting at once, before Wi-Fi.
 - The built-in LED lets you see when the JJY signal is on. On the M5Atom Matrix, only LED 0 is used.  
 Rev.1 behaviour (for the Rev.2 changes, see section 8):  
   >Blue: the JJY signal is being transmitted  
@@ -161,10 +171,14 @@ The serial monitor lets you follow what the device is doing.
 ### (1) Wi-Fi connection recovery
 We have added recovery handling that responds to the Wi-Fi status. Recovery can take a long time, for example 5 or 10 minutes, or until the Wi-Fi access point comes back. The aim is that you can simply leave the device alone and, before you know it, it will be working normally again. The recovery logic was worked out by trial and error and is not necessarily the best approach, so if you have any advice, please do let us know.
 
+In Rev.5 the device no longer restarts because of Wi-Fi while it has a valid time, since a restart silences the time signal for about a minute. It reconnects every minute, and restarts only after about six hours without Wi-Fi, or after four minutes when there is no valid time or no stored Wi-Fi settings (that reopens the configuration portal).
+
 Reference (Qiita, in Japanese): [Trial and error with recovery handling for ESP32 Wi-Fi and tzapu/WiFiManager](https://qiita.com/BotanicFields/items/8a73101a8bfe51e57f67)
 
 ### (2) Using an RTC
 Even if Wi-Fi is temporarily unavailable at power-on or after a reset, the device still transmits the JJY signal, based on the time held in the RTC (real-time clock). To make this possible, the RTC's time is updated whenever the time is synchronised via NTP, and the RTC keeps the current time based on its most recent update. To use this feature, connect an RTC unit to the M5Atom's GROVE port. In our experience, an RTC unit connected with a 20 cm GROVE cable was unreliable, whereas with a 10 cm cable it worked reliably.
+
+In Rev.5 the RTC is written and read at the start of a second, so the time taken from it is within a few milliseconds. If a write was interrupted and the RTC's clock is found stopped at start-up, the RTC is ignored until NTP has set the time.
 
 Examples of RTC units you can use:
 - [Real-Time Clock (RTC) Unit with HYM8563 for M5Stack](https://www.switch-science.com/catalog/7482/) (Switch Science, in Japanese)
