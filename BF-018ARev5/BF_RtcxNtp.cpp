@@ -2,6 +2,7 @@
 // for RTCx(PCf8563) and NTP
 //
 #include <Arduino.h>
+#include <esp_timer.h>
 #include "BF_Log.h"
 #include "BF_Pcf8563.h"
 #include "BF_RtcxNtp.h"
@@ -45,24 +46,28 @@ bool RtcxUpdate(bool rtcx_avail)
   //SNTP sync: Wednesday, September 11 2021 11:10:46
 
   if (rtcx_avail) {
-    // Write the RTC at the start of a second: wait for the system clock's second to change (up to 1s, here in
-    // loop()), then write that second with the RTC's clock stopped and start it again, so that the RTC's seconds
-    // begin within a few ms of the system clock's instead of up to a second apart.
+    // Write the RTC so that its seconds begin on the system clock's. With the PCF8563 the time circuits first
+    // increment 0.5078s after the STOP bit is released (datasheet section 8.10, table 26), so the write sequence
+    // starts about 0.4922s into the second, less the time its I2C transfers take, and writes the second in
+    // progress. The wait, up to 1s here in loop(), happens once per NTP sync. The transfer time is logged so that
+    // write_sequence_us can be checked on the hardware.
+    const long first_increment_us = 507813;  // after STOP is released: PCF8563 datasheet table 26
+    const long write_sequence_us  = 2000;    // the I2C transfers before STOP is released, at 100kHz
+    const long start_us = 1000000L - first_increment_us - write_sequence_us;
     struct timeval tv;
-    gettimeofday(&tv, NULL);
-    time_t sec = tv.tv_sec;
     unsigned long wait_start_ms = millis();
-    while (tv.tv_sec == sec && millis() - wait_start_ms < 1100) {
-      delay(1);
+    for (;;) {
       gettimeofday(&tv, NULL);
+      if ((tv.tv_usec >= start_us && tv.tv_usec < start_us + 3000) || millis() - wait_start_ms >= 1200) {
+        break;
+      }
+      delay(1);
     }
     localtime_r(&tv.tv_sec, &tm_sync);
-    if (rtcx.WriteTimeAtSecond(&tm_sync) == 0) {
-      Log.print("RTCx updated\n");
-    }
-    else {
-      Log.print("RTCx update failed\n");
-    }
+    int64_t write_start_us = esp_timer_get_time();
+    int result = rtcx.WriteTimeAtSecond(&tm_sync);
+    Log.printf("RTCx %s (started at %ld us of the second, transfers until the start took %ld us)\n",
+               result == 0 ? "updated" : "update failed", (long)tv.tv_usec, (long)(rtcx.StartedAfterUs(write_start_us)));
   }
   return true;
 }
@@ -93,22 +98,28 @@ bool SetTimeFromRtcx(const char* time_zone)
 
   // Accept only years after 2016: getLocalTime() treats older times as not set, and a 19xx year means the
   // RTC was set by other software (opposite century bit, and often UTC), so wait for NTP instead.
-  // An RTC whose clock was found stopped at start-up holds a stale time (a write was interrupted): wait too.
-  if (rtcx.ReadTime(&tm_init) == 0 && !rtcx.ClockWasStopped() && tm_init.tm_year > 116) {
+  // An RTC whose last write was interrupted (its marker is still set) holds a stale time: wait too.
+  if (rtcx.ReadTime(&tm_init) == 0 && !rtcx.WriteInterrupted() && tm_init.tm_year > 116) {
     // Read the RTC at the start of a second: poll until its seconds change (up to 1s), so that the system clock
-    // is set within a few ms of the RTC rather than up to a second late.
+    // is set within a few ms of the RTC rather than up to a second late. The reading at the change must be exactly
+    // one second on from the first: one bad I2C reading, or an RTC that does not advance, must not become the time.
     struct tm tm_now = tm_init;
     unsigned long wait_start_ms = millis();
     while (tm_now.tm_sec == tm_init.tm_sec && millis() - wait_start_ms < 1100) {
       if (rtcx.ReadTime(&tm_now) != 0) {
-        tm_now = tm_init;  // keep the first reading if the RTC stops answering
         break;
       }
     }
-    rtcx_valid = true;
-    struct timeval tv = { mktime(&tm_now), 0 };
-    settimeofday(&tv, NULL);
-    Log.print("RTCx valid, the localtime was set\n");
+    struct tm tm_first = tm_init;  // mktime() alters its argument
+    struct tm tm_change = tm_now;
+    if (mktime(&tm_change) - mktime(&tm_first) == 1) {
+      rtcx_valid = true;
+      struct timeval tv = { mktime(&tm_now), 0 };
+      settimeofday(&tv, NULL);
+      Log.print("RTCx valid, the localtime was set\n");
+    } else {
+      Log.print("RTCx not valid: no clean change of its seconds\n");
+    }
   } else {
     Log.print("RTCx not valid\n");
   }

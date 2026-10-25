@@ -148,6 +148,9 @@ void LedShow()
       case led_b_slow: led.b = LedBlink(blink_slow_ms) ? led_on_b : 0;  break;
       default:  break;  // led.b = 0
     }
+    if (wifi_portal_active) {
+      led.b = 0;  // plain green: while the portal blocks setup() this runs only once, with the carrier at any state
+    }
   }
   leds[0] = led;
   FastLED.show();
@@ -169,6 +172,19 @@ const char* WlStatus(wl_status_t wl_status)
     return wl_status_str[7];
   }
   return wl_status_str[8];
+}
+
+// failed retries after which WifiCheck() restarts the device
+int WifiRestartAfter()
+{
+  // A rejected password (WL_CONNECT_FAILED) is not retried by the driver and does not go away: restart soon, so that
+  // the configuration portal reopens. The same without stored Wi-Fi settings, and without a valid time, when there
+  // is no time signal to lose. With a valid time and a lost network, a restart only silences the signal for about
+  // a minute, so it is the last resort, for a stuck Wi-Fi driver.
+  if (wifi_status == WL_CONNECT_FAILED || !wifi_saved || !localtime_valid) {
+    return wifi_retry_max_times;
+  }
+  return wifi_restart_retry_times;
 }
 
 void WifiCheck()
@@ -198,11 +214,8 @@ void WifiCheck()
   }
   ++wifi_retry_times;
 
-  // A restart silences the time signal for about a minute, so while the time is valid it is only the last resort,
-  // for a stuck Wi-Fi driver. Without stored Wi-Fi settings or without a valid time, restart as before: that reopens
-  // the configuration portal, and there is no time signal to lose.
-  int restart_after = (wifi_saved && localtime_valid) ? wifi_restart_retry_times : wifi_retry_max_times;
-  if (wifi_retry_times > restart_after) {
+  // restart as the last resort, or soon when that is what reopens the configuration portal: see WifiRestartAfter()
+  if (wifi_retry_times > WifiRestartAfter()) {
     Log.print("[WiFi]not connected for too long: rebooting..\n");
     ESP.restart();
     return;
@@ -279,8 +292,10 @@ void TcoGen()
   static int    tk_last_slot(-1);   // the 100ms slot handled last
   static time_t tk_sec(0);          // the second whose time code value is in tk_on_slots
   static int    tk_on_slots(0);     // the carrier is on in slots 0 .. tk_on_slots-1 of that second: 2, 5 or 8
-  static bool   tk_carrier(false);  // the carrier state last written
-  static time_t tk_off_sec(0);      // the second in which the carrier was last switched off
+  static bool    tk_carrier(false);  // the carrier state last written
+  static time_t  tk_off_sec(0);      // the second in which the carrier was last switched off
+  static int64_t tk_last_ns(0);      // the clock at the previous call, to measure a step back
+  static int     tk_hold_calls(0);   // calls spent holding the carrier on after a small step back, 0: not holding
 
   if (!localtime_valid) {
     if (tk_carrier) {
@@ -289,32 +304,43 @@ void TcoGen()
     }
     tk_last_slot = -1;
     tk_sec = 0;
+    tk_hold_calls = 0;
     return;
   }
 
   // The carrier is keyed by level, not by edge: every call works out from the clock whether the carrier should be
-  // on right now, and writes it only when that changes. A clock step or a late call can then delay an edge by one
-  // call (10ms) at most but never lose it, and the rest of the second is always right.
+  // on right now, and writes it only when that changes. A late call or a small clock step then delays an edge by
+  // one call (10ms) at most, and whatever happens, the next second is sent right. A step forward past a pulse
+  // still loses that pulse, and a large step back still costs one second: the time itself moved.
   clock_gettime(CLOCK_REALTIME, &ts);
+  int64_t now_ns = (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+  int64_t step_back_ns = tk_last_ns - now_ns;  // > 0 when the clock was stepped back since the previous call
+  tk_last_ns = now_ns;
   int ts_100ms = ts.tv_nsec / 100000000;
   if (ts.tv_sec < tk_sec) {
-    // The clock was stepped back. Within one second (an NTP correction) the second just sent plays again: leave
-    // the carrier as it is, so the pulse already sent is only stretched. Further back: start afresh with the new time.
-    if (tk_sec - ts.tv_sec > 1) {
-      tk_sec = 0;
-    }
-    else {
+    // The clock was stepped back into a second already sent. While that second's pulse is still on and the step
+    // is small, keep it on until the clock reaches that second again: the pulse is stretched by the step, which
+    // keeps its meaning below 150ms. Otherwise start afresh with the new time, so that second is sent again.
+    bool hold = (tk_hold_calls > 0) ? (tk_hold_calls < 20)
+                                    : (tk_carrier && tk_off_sec != tk_sec && step_back_ns < 150000000LL);
+    if (hold) {
+      ++tk_hold_calls;
       return;
     }
+    tk_sec = 0;
   }
+  tk_hold_calls = 0;
+  bool new_second = false;
   if (ts.tv_sec != tk_sec) {
+    bool fresh = (tk_sec == 0);
     tk_sec = ts.tv_sec;
     localtime_r(&ts.tv_sec, &td);  // td from the same clock reading as ts
     int value = TcoValue();
     tk_on_slots = (value == marker) ? 2 : (value != 0) ? 5 : 8;  // 0.2s, 0.5s, 0.8s
-    if (td.tm_sec == 0) {
-      Log.print(&td, "\n%A %B %d %Y %H:%M:%S\n");
+    if (fresh && ts_100ms != 0) {
+      tk_off_sec = tk_sec;  // starting in the middle of a second: no partial pulse, the next second starts clean
     }
+    new_second = true;
   }
   // on in the first tk_on_slots slots, and never on again in a second once it has been switched off: a small step
   // back within the second would otherwise add a short extra pulse
@@ -333,6 +359,9 @@ void TcoGen()
         default: Log.print("0");  break;
       }
     }
+  }
+  if (new_second && td.tm_sec == 0) {
+    Log.print(&td, "\n%A %B %d %Y %H:%M:%S\n");  // after the carrier write, so the minute marker's edge is not delayed
   }
 
   // statistics: on the first call in each 100ms slot
@@ -411,11 +440,16 @@ void TcoStatsPrint()
     return;
   }
   printed_seq = stats.seq;
-  for (int i = 0; i < 9; ++i) {
-    Log.printf("%d ", stats.distribution[i]);
+  char line[256];  // one write, so the Ticker task's bit characters cannot land inside the line
+  int n = 0;
+  for (int i = 0; i < 9 && n < (int)sizeof(line); ++i) {
+    n += snprintf(line + n, sizeof(line) - n, "%d ", stats.distribution[i]);
   }
-  Log.printf("\nn= %d, ave= %.4f  sdv= %.4f  min= %d  max= %d\n",
+  if (n < (int)sizeof(line)) {
+    snprintf(line + n, sizeof(line) - n, "\nn= %d, ave= %.4f  sdv= %.4f  min= %d  max= %d\n",
              stats.count, TcoStatsAverage(stats), TcoStatsStdDeviation(stats), stats.min, stats.max);
+  }
+  Log.print(line);
 }
 
 void TcOn()
@@ -612,7 +646,7 @@ void WebUiStatusJson(Print &out)
   out.printf(",\"wifi\":{\"status\":\"%s\",\"ssid\":", WlStatus(wifi_status));
   WebUiJsonString(out, WiFi.SSID().c_str());
   out.printf(",\"rssi\":%d,\"ip\":\"%s\",\"retries\":%d,\"retry_max\":%d}",
-             WiFi.RSSI(), WiFi.localIP().toString().c_str(), wifi_retry_times, wifi_retry_max_times);
+             WiFi.RSSI(), WiFi.localIP().toString().c_str(), wifi_retry_times, WifiRestartAfter());
   out.printf(",\"led\":{\"enabled\":%s,\"r\":%d,\"g\":%d,\"b\":%d}",
              led_enable ? "true" : "false", (int)led_r, (int)LedGreen(), (int)led_b);
   out.printf(",\"stats\":{\"n\":%d,\"b\":[", stats.count);

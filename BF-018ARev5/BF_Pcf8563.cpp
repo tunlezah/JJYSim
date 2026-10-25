@@ -2,17 +2,23 @@
 // PCF8563 RTC for M5 Series
 //
 #include <Arduino.h>
+#include <esp_timer.h>
 #include "BF_Log.h"
 #include "BF_Pcf8563.h"
+
+// WriteTimeAtSecond() keeps a marker in the day-alarm register while it runs. Nothing else writes that register with
+// this value (M5Unified's own RTC start-up only writes registers 00h and 0Eh), so if Begin() finds it, the last
+// write was interrupted and the time is stale.
+static const int     write_marker_reg   = 0x0b;
+static const uint8_t write_marker_value = 0xaa;  // alarm disabled (bit 7) with the impossible day "2A"
 
 int Pcf8563::Begin(TwoWire &wire)
 {
   m_wire = &wire;
 
-  // A clock left stopped means a WriteTimeAtSecond() was interrupted: remember it, the time is then stale.
-  m_clock_was_stopped = (ReadControl() == 0) && source_clock_stoped;
+  m_write_interrupted = (ReadReg(write_marker_reg, 1) == 1) && (m_reg[write_marker_reg] == write_marker_value);
 
-  // clear registers
+  // clear registers (WriteAlarm() also clears the marker)
   external_clock_test_mode = false;
   source_clock_stoped      = false;
   power_on_reset_override  = true;
@@ -73,15 +79,21 @@ int Pcf8563::WriteTime(struct tm *tm_now)
   return WriteReg(0x02, 7);
 }
 
-// Write the time with the clock stopped (STOP resets the divider chain), then start it: the RTC's seconds begin
-// exactly when it is started, so call this at the start of a second.
+// Write the time with the clock stopped, then start it. STOP holds the upper part of the prescaler in reset, so the
+// seconds first increment 0.5078s after the clock is started (PCF8563 datasheet 8.10): the caller times this call
+// so that this lands on the system clock's next second. The marker in the day-alarm register is set first and
+// cleared last; found at Begin(), it means this was interrupted and the time is stale.
 int Pcf8563::WriteTimeAtSecond(struct tm *tm_now)
 {
+  m_reg[write_marker_reg] = write_marker_value;
+  if (WriteReg(write_marker_reg, 1) != 0) return 1;
   source_clock_stoped = true;
   if (WriteControl() != 0) return 1;
   int result = WriteTime(tm_now);
   source_clock_stoped = false;
-  if (WriteControl() != 0) return 1;  // the clock stays stopped: Begin() reports that at the next start
+  if (WriteControl() != 0) return 1;  // the clock stays stopped and the marker stays: Begin() reports it next time
+  m_started_us = esp_timer_get_time();
+  if (WriteAlarm() != 0) return 1;    // clears the marker (alarms are off)
   return result;
 }
 

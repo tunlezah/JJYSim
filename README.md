@@ -3,10 +3,10 @@
 Note: the standard ATOMS3 (the non-Lite model) is not supported.
 
 ### 2026-10-25 update (Rev.5 only; Rev.3 and Rev.4 are unchanged and remain the hardware-tested fallbacks)
-- The carrier is keyed by level: every 10 ms the firmware works out from the clock whether the carrier should be on and corrects it, so a clock step or a late callback can delay an edge by 10 ms but never lose it. Previously a step of more than 100 ms, for example the first NTP reply after starting from the RTC, could corrupt one bit.
+- The carrier is keyed by level: every 10 ms the firmware works out from the clock whether the carrier should be on and corrects it, so a late callback or a small clock step delays an edge by at most 10 ms and, whatever happens, the next second is sent correctly. A step forward past a pulse still loses that pulse and a large step back still costs one second, because the time itself moved. Previously a lost edge could also spoil the following second.
 - With a valid RTC time the signal starts at once, before Wi-Fi, and the 3 s start-up delay is gone.
-- No more restarts because of Wi-Fi while the time is valid: the device reconnects every minute and restarts only after about six hours without Wi-Fi. Without a valid time, or without stored Wi-Fi settings, it restarts after four minutes as before, which reopens the configuration portal.
-- The RTC is written and read at the start of a second, so the time taken from it is within a few milliseconds instead of up to two seconds late. A write interrupted by a power failure is detected at the next start, and the RTC is then ignored until NTP.
+- No more restarts because of Wi-Fi while the time is valid: the device reconnects every minute and restarts only after about six hours without Wi-Fi. When the password is rejected, when there is no valid time, or when no Wi-Fi settings are stored, it restarts after about four minutes as before, which reopens the configuration portal.
+- The RTC is written so that its seconds start on the system clock's, allowing for the PCF8563's first increment 0.508 s after a stop, and it is read at start-up when its seconds change, so the time taken from it should be within a few milliseconds instead of up to two seconds off. This follows the PCF8563 datasheet and has to be confirmed on the HYM8563 unit; the serial log shows the timing of each write. A write interrupted by a power failure leaves a marker that is checked at the next start, and an RTC that does not advance is rejected too; in both cases the device waits for NTP.
 - The statistics line and the NTP status are printed from `loop()`, no longer from the Ticker task or the network task.
 - "Sync time now" on the page restarts NTP inside the TCP/IP task on board package 2.x.
 - Compile-checked on both board packages and both boards; not yet tested on hardware.
@@ -164,21 +164,21 @@ The M5Atom version does not use an external LCD.
 The button turns LED monitoring on and off.
 
 ## 7. Serial monitor
-The serial monitor lets you follow what the device is doing.
+The serial monitor lets you follow what the device is doing. Rev.5 starts without the 3 s delay of the earlier revisions, so on the ATOMS3 Lite the first lines can be missing from a serial monitor opened after power-on; the page's log (section 9) keeps them.
 
 ## 8. Miscellaneous
 
 ### (1) Wi-Fi connection recovery
 We have added recovery handling that responds to the Wi-Fi status. Recovery can take a long time, for example 5 or 10 minutes, or until the Wi-Fi access point comes back. The aim is that you can simply leave the device alone and, before you know it, it will be working normally again. The recovery logic was worked out by trial and error and is not necessarily the best approach, so if you have any advice, please do let us know.
 
-In Rev.5 the device no longer restarts because of Wi-Fi while it has a valid time, since a restart silences the time signal for about a minute. It reconnects every minute, and restarts only after about six hours without Wi-Fi, or after four minutes when there is no valid time or no stored Wi-Fi settings (that reopens the configuration portal).
+In Rev.5 the device no longer restarts because of Wi-Fi while it has a valid time, since a restart silences the time signal for about a minute. It reconnects every minute, and restarts only after about six hours without Wi-Fi. It still restarts after about four minutes when the password is rejected, when there is no valid time, or when no Wi-Fi settings are stored, because the restart is what reopens the configuration portal.
 
 Reference (Qiita, in Japanese): [Trial and error with recovery handling for ESP32 Wi-Fi and tzapu/WiFiManager](https://qiita.com/BotanicFields/items/8a73101a8bfe51e57f67)
 
 ### (2) Using an RTC
 Even if Wi-Fi is temporarily unavailable at power-on or after a reset, the device still transmits the JJY signal, based on the time held in the RTC (real-time clock). To make this possible, the RTC's time is updated whenever the time is synchronised via NTP, and the RTC keeps the current time based on its most recent update. To use this feature, connect an RTC unit to the M5Atom's GROVE port. In our experience, an RTC unit connected with a 20 cm GROVE cable was unreliable, whereas with a 10 cm cable it worked reliably.
 
-In Rev.5 the RTC is written and read at the start of a second, so the time taken from it is within a few milliseconds. If a write was interrupted and the RTC's clock is found stopped at start-up, the RTC is ignored until NTP has set the time.
+In Rev.5 the RTC is written so that its seconds start on the system clock's, and read at start-up when its seconds change, so the time taken from it should be within a few milliseconds (see the 2026-10-25 update for the caveat). If a write was interrupted, or the RTC does not advance, it is ignored until NTP has set the time.
 
 Examples of RTC units you can use:
 - [Real-Time Clock (RTC) Unit with HYM8563 for M5Stack](https://www.switch-science.com/catalog/7482/) (Switch Science, in Japanese)
