@@ -58,15 +58,46 @@ static String RtcxZoneStored()
   return zone;
 }
 
-static void RtcxZoneStore(const char *time_zone)
+// Wait until the system clock is phase_us into a second (a 3ms window, up to 1.2s). false: no window in time.
+static bool RtcxWaitForPhase(long phase_us)
 {
-  if (time_zone == nullptr || RtcxZoneStored() == time_zone) {
-    return;
+  unsigned long wait_start_ms = millis();
+  for (;;) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    long into_window_us = tv.tv_usec - phase_us;
+    if (into_window_us < 0) {
+      into_window_us += 1000000L;
+    }
+    if (into_window_us < 3000L) {
+      return true;
+    }
+    if (millis() - wait_start_ms >= 1200) {
+      return false;
+    }
+    delay(1);
   }
+}
+
+// Store the time zone record, if it differs from the one stored. true: the record now holds time_zone. A flash write
+// holds the processor up, which would lengthen a pulse of the time code that is due to end meanwhile; so the write is
+// made 0.95s into a second, when no pulse is on (TcoGen() starts a pulse at most 0.1s into a second, and the longest
+// lasts 0.8s): however long the write takes, it can only delay the next pulse's start, and TcoGen() leaves out a pulse
+// that would start too late.
+static bool RtcxZoneStore(const char *time_zone)
+{
+  if (time_zone == nullptr) {
+    return false;
+  }
+  if (RtcxZoneStored() == time_zone) {
+    return true;
+  }
+  RtcxWaitForPhase(950000L);
   Preferences prefs;
   bool stored = prefs.begin(rtcx_prefs_namespace, false) && prefs.putString("tz", time_zone) == strlen(time_zone);
   prefs.end();
   Log.printf("RTCx: time zone %s %s\n", time_zone, stored ? "stored" : "could not be stored");
+  return stored;
 }
 
 // Watch the RTC for a change of its seconds, for up to timeout_ms. The change is timed only when it falls between two
@@ -184,7 +215,8 @@ static rtcx_write_t RtcxWriteAligned(long lead_us, long &error_us, long &delay_u
 }
 
 // Write the RTC from the system clock, aligned, and time its first change of seconds. If its seconds begin 20ms or more
-// off, write it again, up to three writes in all (about 1s with a PCF8563, up to about 7s). The lead for the next write
+// off, or the change could not be timed, write it again, up to four writes in all (about 1s with a PCF8563; up to about
+// 10s when readings fail: two untimed writes, then the one that measures a 1s chip, then the aligned one). The lead for the next write
 // is the transfers plus the chip's own delay from its clock start to its first increment, as measured, not the lead
 // plus the error: a write held up before the clock start would carry its hold-up into the lead. So a held-up write is
 // simply done again, and a chip that takes 1s to its first increment is aligned by the second write.
@@ -196,12 +228,14 @@ static void RtcxWriteFromSystemClock()
     return;
   }
   String zone_stored = RtcxZoneStored();
-  if (zone_stored != time_zone && zone_stored != rtcx_zone_unknown) {
-    RtcxZoneStore(rtcx_zone_unknown);  // a write in another zone: the record no longer describes the RTC
+  if (zone_stored != time_zone && zone_stored != rtcx_zone_unknown && !RtcxZoneStore(rtcx_zone_unknown)) {
+    // a write in another zone, and the record that would describe the old one could not be cleared: no write
+    Log.print("RTCx not updated: its time zone record could not be cleared\n");
+    return;
   }
 
   bool written = false;
-  for (int attempt = 0; attempt < 3; ++attempt) {
+  for (int attempt = 0; attempt < 4; ++attempt) {
     long error_us = 0;
     long delay_us = 0;
     rtcx_write_t result = RtcxWriteAligned(rtcx_lead_us, error_us, delay_us);
@@ -212,16 +246,23 @@ static void RtcxWriteFromSystemClock()
     if (result == rtcx_written) {
       continue;  // its change of seconds could not be timed: write it again, to time it
     }
-    if (error_us > -20000L && error_us < 20000L) {
-      break;     // aligned: the lead is kept, also when this write measured a shorter delay because of a hold-up
-    }
     long lead_us = rtcx_transfer_us + delay_us;
-    if (lead_us < 100000L || lead_us > 1900000L) {
+    bool credible = (lead_us >= 100000L && lead_us <= 1900000L);
+    if (error_us > -20000L && error_us < 20000L) {
+      // Aligned. The lead may only grow here: a hold-up after the clock start can only shorten the delay measured, the
+      // readings lengthen it by 5ms at most; so the lead settles just above the chip's delay, and one held-up
+      // measurement cannot shorten it for the rest of the uptime.
+      if (credible && lead_us > rtcx_lead_us) {
+        rtcx_lead_us = lead_us;
+      }
+      break;
+    }
+    if (!credible) {
       Log.printf("RTCx: a first increment %ld us after the clock start is not credible: the lead is left as it is\n", delay_us);
       break;
     }
     rtcx_lead_us = lead_us;
-    if (attempt < 2) {
+    if (attempt < 3) {
       Log.print("RTCx: written again\n");
     }
   }
