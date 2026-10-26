@@ -39,8 +39,12 @@ void SntpTimeSyncNotificationCallback(struct timeval *tv)
 
 // The RTC holds local time. The time zone it was written in is kept in NVS, so that after a change of time zone on the
 // page the RTC is not read in the new one: its time is then not used until NTP has set the clock and the RTC has been
-// written again. Stored only when it changes, so the flash sees one write per change of time zone.
+// written again. A write in another zone first replaces the record with rtcx_zone_unknown, which no time zone can be
+// (the page does not accept '*'), and stores the zone only once the write is complete: a power cut or a failed store
+// in between leaves a record that does not match, never one that describes another write. So the flash sees two
+// writes per change of time zone, and none otherwise. The record exists only once this firmware has written the RTC.
 static const char *rtcx_prefs_namespace = "rtcx";
+static const char *rtcx_zone_unknown    = "*";
 
 // the time zone stored, or an empty string if there is none (a first start, or NVS not readable)
 static String RtcxZoneStored()
@@ -186,16 +190,30 @@ static rtcx_write_t RtcxWriteAligned(long lead_us, long &error_us, long &delay_u
 // simply done again, and a chip that takes 1s to its first increment is aligned by the second write.
 static void RtcxWriteFromSystemClock()
 {
+  const char *time_zone = getenv("TZ");  // the zone of the local time about to be written
+  if (time_zone == nullptr || *time_zone == '\0') {
+    Log.print("RTCx not updated: no time zone set\n");
+    return;
+  }
+  String zone_stored = RtcxZoneStored();
+  if (zone_stored != time_zone && zone_stored != rtcx_zone_unknown) {
+    RtcxZoneStore(rtcx_zone_unknown);  // a write in another zone: the record no longer describes the RTC
+  }
+
   bool written = false;
   for (int attempt = 0; attempt < 3; ++attempt) {
     long error_us = 0;
     long delay_us = 0;
     rtcx_write_t result = RtcxWriteAligned(rtcx_lead_us, error_us, delay_us);
-    if (result != rtcx_not_written) {
-      written = true;
+    if (result == rtcx_not_written) {
+      break;     // the RTC is left as it is; the next NTP sync tries again
     }
-    if (result != rtcx_checked) {
-      break;
+    written = true;
+    if (result == rtcx_written) {
+      continue;  // its change of seconds could not be timed: write it again, to time it
+    }
+    if (error_us > -20000L && error_us < 20000L) {
+      break;     // aligned: the lead is kept, also when this write measured a shorter delay because of a hold-up
     }
     long lead_us = rtcx_transfer_us + delay_us;
     if (lead_us < 100000L || lead_us > 1900000L) {
@@ -203,15 +221,12 @@ static void RtcxWriteFromSystemClock()
       break;
     }
     rtcx_lead_us = lead_us;
-    if (error_us > -20000L && error_us < 20000L) {
-      break;
-    }
     if (attempt < 2) {
       Log.print("RTCx: written again\n");
     }
   }
   if (written) {
-    RtcxZoneStore(getenv("TZ"));  // the zone of the local time just written
+    RtcxZoneStore(time_zone);  // the write is complete: the record describes the RTC again
   }
 }
 
@@ -275,24 +290,32 @@ bool SetTimeFromRtcx(const char* time_zone)
 
   // Accept only years after 2016: getLocalTime() treats older times as not set, and a 19xx year means the
   // RTC was set by other software (opposite century bit, and often UTC), so wait for NTP instead.
-  // An RTC whose marker is set holds a stale time (an interrupted write), and one written in another time zone holds
-  // that zone's local time: wait too. With no zone stored yet, the RTC is taken to be in this one, and that is stored.
+  // The RTC is used only when this firmware wrote it last, completely, in this time zone: its state says the write was
+  // complete and whether daylight saving time was in effect, and the record names this zone. Otherwise its time may
+  // be in another zone or in UTC, or the record may describe another write: an interrupted write (the marker), a
+  // change of time zone, a write by other software (Rev.3/Rev.4, another M5 program: no daylight-saving state), or
+  // an erased record. The device then waits for NTP, once, after which this firmware has written the RTC.
   String zone_stored = RtcxZoneStored();
-  if (zone_stored.length() == 0) {
-    RtcxZoneStore(time_zone);
-  }
+  int isdst = rtcx.IsdstWritten();
+  Log.printf("RTCx: last written %s, time zone recorded: %s\n",
+             rtcx.TimeStale() ? "incompletely" : isdst == 1 ? "in daylight saving time" : isdst == 0 ? "in standard time"
+                                                                   : "with no daylight-saving record (other or earlier software)",
+             zone_stored.length() != 0 ? zone_stored.c_str() : "none");
   if (rtcx.TimeStale()) {
     Log.print("RTCx not used: its last write was interrupted or failed\n");
   }
-  else if (zone_stored.length() != 0 && zone_stored != time_zone) {
-    Log.printf("RTCx not used: it holds the local time of another time zone (%s)\n", zone_stored.c_str());
+  else if (isdst < 0) {
+    Log.print("RTCx not used: last written by other software or an earlier version, in an unknown time zone\n");
+  }
+  else if (zone_stored != time_zone) {
+    Log.print("RTCx not used: it holds the local time of another time zone, or of one not recorded\n");
   }
   else if (RtcxReadTime(tm_init) == 0 && tm_init.tm_year > 116) {
     // Read the RTC at a change of its seconds (within about 2s), so that the system clock is set within a few ms of
     // the RTC rather than up to a second late. The readings on either side of the change must be exactly one second
     // apart: one bad I2C reading, or an RTC that does not advance, must not become the time.
     struct tm tm_before = tm_init;
-    struct tm tm_after = tm_init;  // tm_isdst stays -1: ReadTime() sets the date and time only
+    struct tm tm_after = tm_init;  // tm_isdst stays as recorded: ReadTime() sets the date and time only
     int64_t change_us;
     bool clean = RtcxWatchChange(tm_before, tm_after, change_us, 2100);
     if (clean) {
