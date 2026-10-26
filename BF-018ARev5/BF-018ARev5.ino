@@ -678,21 +678,6 @@ void WebUiSetLed(bool enable)
   led_enable = enable;
 }
 
-// The RTC holds local time, which the next start would read in the new time zone: mark it stale, so that the device
-// waits for NTP instead, and leave the RTC alone until the restart. The next RTC update after NTP clears the mark.
-void WebUiTimeZoneSaving(const char *time_zone)
-{
-  if (rtcx_available && strcmp(time_zone, settings.time_zone) != 0) {
-    rtcx_available = false;
-    bool marked = false;
-    for (int i = 0; i < 3 && !marked; ++i) {
-      marked = (rtcx.MarkTimeStale() == 0);
-    }
-    Log.print(marked ? "[Web]time zone changed: the RTC's time will not be used until NTP has set the clock\n"
-                     : "[Web]time zone changed, but the RTC could not be marked: its old time may be used until NTP\n");
-  }
-}
-
 #if ESP_ARDUINO_VERSION_MAJOR < 3
 static void SntpRestart(void *)
 {

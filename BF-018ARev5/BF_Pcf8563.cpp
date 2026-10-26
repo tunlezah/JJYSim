@@ -6,13 +6,17 @@
 #include "BF_Log.h"
 #include "BF_Pcf8563.h"
 
-// WriteTimeAtSecond() keeps a marker in the timer register (0Fh) while it runs, and MarkTimeStale() sets it for good.
-// The timer is never enabled here, so the register is free, and M5Unified's own RTC start-up (M5.begin() with
-// external_rtc) writes 00h, 01h, 09h to 0Ch and 0Eh but not 0Fh, so the marker survives it. If Begin() finds the
-// marker, the last write was interrupted or failed half-way, or the time was marked stale: the time is not to be
-// trusted, and the marker is kept until a write completes.
-static const int     write_marker_reg   = 0x0f;
-static const uint8_t write_marker_value = 0xaa;  // the timer register is otherwise cleared to 0
+// The timer register (0Fh) records the state of the time. WriteTimeAtSecond() sets the marker there before it writes
+// anything else, and replaces it with a code when the time is complete: written in standard time, or written in
+// daylight saving time. The timer is never enabled here, so the register is free, and M5Unified's own RTC start-up
+// (M5.begin() with external_rtc) writes 00h, 01h, 09h to 0Ch and 0Eh but not 0Fh. Found at Begin():
+//   the marker: the last write was interrupted or failed half-way; the time is not to be trusted until a write completes;
+//   a code: the time is complete, and whether daylight saving time was in effect when it was written is known;
+//   anything else (0 after earlier software, such as Rev.3 and Rev.4): complete as far as is known, daylight saving unknown.
+static const int     state_reg         = 0x0f;
+static const uint8_t state_writing     = 0xaa;  // the marker
+static const uint8_t state_written_std = 0xd0;
+static const uint8_t state_written_dst = 0xd1;
 
 int Pcf8563::Begin(TwoWire &wire)
 {
@@ -24,15 +28,18 @@ int Pcf8563::Begin(TwoWire &wire)
   power_on_reset_override  = false;  // TESTC: 0 for normal operation (data sheet table 6); 1 lets a bus pattern reset the chip
   if (WriteControl() != 0) return 1;
 
-  // the marker, before the timer register is written: one that cannot be read (three tries) counts as set, and the
-  // time is then not trusted until a write has completed
-  m_time_stale = true;
-  for (int i = 0; i < 3; ++i) {
-    if (ReadReg(write_marker_reg, 1) == 1) {
-      m_time_stale = (m_reg[write_marker_reg] == write_marker_value);
-      break;
+  // The state, read before anything else is written. It counts as the marker unless two readings agree: a reading that
+  // fails, or a bit flipped on the bus, must not let a stale time through.
+  int  state  = -1;
+  bool agreed = false;
+  for (int i = 0; i < 4 && !agreed; ++i) {
+    if (ReadReg(state_reg, 1) == 1) {
+      agreed = (m_reg[state_reg] == state);
+      state  = m_reg[state_reg];
     }
   }
+  m_time_stale    = !agreed || state == state_writing;
+  m_isdst_written = !agreed ? -1 : state == state_written_dst ? 1 : state == state_written_std ? 0 : -1;
 
   clock_out_active =false;
   clock_out        = fco_32768Hz;
@@ -44,16 +51,11 @@ int Pcf8563::Begin(TwoWire &wire)
   alarm_weekday_enable = false;  alarm_weekday = 0;
   if (WriteAlarm() != 0) return 1;
 
+  // the timer off, with its slowest clock for the lowest current (data sheet 8.8.1, table 23); the state in 0Fh is kept
   timer_enable = false;
-  timer_source = fts_1_60th_Hz;  // the timer's clock when it is not in use, for the lowest current (data sheet 8.8.1, table 23)
-  timer        = 0;
-  if (m_time_stale) {
-    // The marker stays until a WriteTimeAtSecond() completes, so that the stale time is still known as such at
-    // the next start if this one never gets to write the RTC. Only the timer control register is cleared.
-    m_reg[0x0e] = timer_source;
-    if (WriteReg(0x0e, 1) != 0) return 1;
-  }
-  else if (WriteTimer() != 0) return 1;
+  timer_source = fts_1_60th_Hz;
+  m_reg[0x0e] = timer_source;
+  if (WriteReg(0x0e, 1) != 0) return 1;
 
   timer_interrupt_pulse_mode = false;
   alarm_flag_active          = false;
@@ -97,12 +99,13 @@ int Pcf8563::WriteTime(struct tm *tm_now)
 
 // Write the time with the clock stopped, then start it. STOP holds the upper part of the prescaler in reset, so the
 // seconds first increment 0.5078s after the clock is started (PCF8563 datasheet 8.10; a clone may take 1s): the
-// caller times this call so that this lands on the system clock's next second. The marker is set first and
-// cleared last, and left in place if the time write failed; found at Begin(), it means the time is not to be trusted.
+// caller times this call so that this lands on the system clock's next second. The marker is set first and replaced
+// last by the code for tm_now->tm_isdst; it stays if anything failed, and found at Begin(), it means the time is not
+// to be trusted.
 int Pcf8563::WriteTimeAtSecond(struct tm *tm_now)
 {
-  m_reg[write_marker_reg] = write_marker_value;
-  if (WriteReg(write_marker_reg, 1) != 0) return 1;
+  m_reg[state_reg] = state_writing;
+  if (WriteReg(state_reg, 1) != 0) return 1;
   source_clock_stoped = true;
   if (WriteControl() != 0) return 1;
   int result = WriteTime(tm_now);
@@ -110,18 +113,12 @@ int Pcf8563::WriteTimeAtSecond(struct tm *tm_now)
   if (WriteControl() != 0) return 1;  // the clock stays stopped and the marker stays: Begin() reports it next time
   m_started_us = esp_timer_get_time();
   if (result != 0) return result;     // the time may be half written: the marker stays, so it is not trusted next time
-  if (WriteTimer() != 0) return 1;    // clears the marker (the timer is off)
-  m_time_stale = false;
+  int isdst = (tm_now->tm_isdst > 0) ? 1 : 0;
+  m_reg[state_reg] = isdst ? state_written_dst : state_written_std;
+  if (WriteReg(state_reg, 1) != 0) return 1;  // the marker stays
+  m_time_stale    = false;
+  m_isdst_written = isdst;
   return 0;
-}
-
-// Mark the time as not to be trusted until the next WriteTimeAtSecond() completes: Begin() then reports TimeStale()
-// at the next start. For a time that has become wrong for the system, such as the local time of a time zone no
-// longer in use.
-int Pcf8563::MarkTimeStale()
-{
-  m_reg[write_marker_reg] = write_marker_value;
-  return WriteReg(write_marker_reg, 1);
 }
 
 // to enable alarm, give valid value for arguments of minute, hour, day, weekday

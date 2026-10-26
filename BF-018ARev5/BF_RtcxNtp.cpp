@@ -2,6 +2,7 @@
 // for RTCx(PCf8563) and NTP
 //
 #include <Arduino.h>
+#include <Preferences.h>
 #include <esp_timer.h>
 #include "BF_Log.h"
 #include "BF_Pcf8563.h"
@@ -34,6 +35,34 @@ void SntpTimeSyncNotificationCallback(struct timeval *tv)
   if (sntp_sync_status == SNTP_SYNC_STATUS_COMPLETED) {
     sntp_sync_status_complete = true;
   }
+}
+
+// The RTC holds local time. The time zone it was written in is kept in NVS, so that after a change of time zone on the
+// page the RTC is not read in the new one: its time is then not used until NTP has set the clock and the RTC has been
+// written again. Stored only when it changes, so the flash sees one write per change of time zone.
+static const char *rtcx_prefs_namespace = "rtcx";
+
+// the time zone stored, or an empty string if there is none (a first start, or NVS not readable)
+static String RtcxZoneStored()
+{
+  Preferences prefs;
+  String zone;
+  if (prefs.begin(rtcx_prefs_namespace, true)) {  // read-only: fails while the namespace does not exist yet
+    zone = prefs.getString("tz", "");
+    prefs.end();
+  }
+  return zone;
+}
+
+static void RtcxZoneStore(const char *time_zone)
+{
+  if (time_zone == nullptr || RtcxZoneStored() == time_zone) {
+    return;
+  }
+  Preferences prefs;
+  bool stored = prefs.begin(rtcx_prefs_namespace, false) && prefs.putString("tz", time_zone) == strlen(time_zone);
+  prefs.end();
+  Log.printf("RTCx: time zone %s %s\n", time_zone, stored ? "stored" : "could not be stored");
 }
 
 // Watch the RTC for a change of its seconds, for up to timeout_ms. The change is timed only when it falls between two
@@ -76,16 +105,18 @@ static bool RtcxWatchChange(struct tm &tm_before, struct tm &tm_after, int64_t &
 // sheet does not say). The lead below is that time plus the I2C transfers before the start. After each write the
 // RTC's first change of seconds is timed on the processor's monotonic clock, and the lead is corrected from what is
 // measured, so that the alignment comes out right on either chip; the log shows the result.
-static long rtcx_lead_us(507813L + 2000L);
+static long       rtcx_lead_us(507813L + 2000L);
+static const long rtcx_transfer_us(2000L);  // the I2C transfers before the clock start, without hold-ups
 
 enum rtcx_write_t { rtcx_not_written, rtcx_written, rtcx_checked };
 
 // Wait for the system clock to reach lead_us before the start of a second (a 3ms window, up to 1.2s), write that
 // second with the RTC's clock stopped and started again, then time the RTC's first change of seconds.
-// rtcx_checked: error_us holds how long after the system clock's second the RTC's began (+: later), to within the
-// few ms the readings take. rtcx_written: the RTC was written but its change of seconds could not be timed.
-// rtcx_not_written: no window in time (loop() was held up) or the write failed; the RTC is then left as it is.
-static rtcx_write_t RtcxWriteAligned(long lead_us, long &error_us)
+// rtcx_checked: error_us holds how long after the system clock's second the RTC's began (+: later), and delay_us how
+// long after its clock start the RTC made its first increment, both to within the few ms the readings take.
+// rtcx_written: the RTC was written but its change of seconds could not be timed. rtcx_not_written: no window in time
+// (loop() was held up) or the write failed; the RTC is then left as it is.
+static rtcx_write_t RtcxWriteAligned(long lead_us, long &error_us, long &delay_us)
 {
   long start_us = 1000000L - lead_us;  // the write begins here in the second, so that the RTC's seconds begin at 0
   int offset_sec = 0;
@@ -126,7 +157,7 @@ static rtcx_write_t RtcxWriteAligned(long lead_us, long &error_us)
     return rtcx_not_written;
   }
   Log.printf("RTCx write done: begun %ld us into the window, the clock started %ld us later\n",
-             into_window_us, (long)rtcx.StartedAfterUs(tv_us));
+             into_window_us, (long)(rtcx.StartedUs() - tv_us));
 
   // The RTC must show the seconds written up to its first change of seconds, and then the next.
   struct tm tm_before = tm_write;
@@ -143,8 +174,45 @@ static rtcx_write_t RtcxWriteAligned(long lead_us, long &error_us)
   // The system clock's second began lead_us - into_window_us after tv was read; the RTC's began at its change of
   // seconds. Both on the monotonic clock, so a second's worth of ambiguity does not come into it.
   error_us = (long)(change_us - tv_us) - lead_us + into_window_us;
+  delay_us = (long)(change_us - rtcx.StartedUs());
   Log.printf("RTCx: its seconds begin %+ld us from the system clock's (lead %ld us)\n", error_us, lead_us);
   return rtcx_checked;
+}
+
+// Write the RTC from the system clock, aligned, and time its first change of seconds. If its seconds begin 20ms or more
+// off, write it again, up to three writes in all (about 1s with a PCF8563, up to about 7s). The lead for the next write
+// is the transfers plus the chip's own delay from its clock start to its first increment, as measured, not the lead
+// plus the error: a write held up before the clock start would carry its hold-up into the lead. So a held-up write is
+// simply done again, and a chip that takes 1s to its first increment is aligned by the second write.
+static void RtcxWriteFromSystemClock()
+{
+  bool written = false;
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    long error_us = 0;
+    long delay_us = 0;
+    rtcx_write_t result = RtcxWriteAligned(rtcx_lead_us, error_us, delay_us);
+    if (result != rtcx_not_written) {
+      written = true;
+    }
+    if (result != rtcx_checked) {
+      break;
+    }
+    long lead_us = rtcx_transfer_us + delay_us;
+    if (lead_us < 100000L || lead_us > 1900000L) {
+      Log.printf("RTCx: a first increment %ld us after the clock start is not credible: the lead is left as it is\n", delay_us);
+      break;
+    }
+    rtcx_lead_us = lead_us;
+    if (error_us > -20000L && error_us < 20000L) {
+      break;
+    }
+    if (attempt < 2) {
+      Log.print("RTCx: written again\n");
+    }
+  }
+  if (written) {
+    RtcxZoneStore(getenv("TZ"));  // the zone of the local time just written
+  }
 }
 
 bool RtcxUpdate(bool rtcx_avail)
@@ -163,28 +231,7 @@ bool RtcxUpdate(bool rtcx_avail)
   //SNTP sync: Wednesday, September 11 2021 11:10:46
 
   if (rtcx_avail) {
-    // once per NTP sync, here in loop(): the aligned write and the timing of the RTC's first change of seconds. If its
-    // seconds begin 20ms or more off, the lead is corrected by what was measured and the RTC is written again, up to
-    // three writes in all, so that one held-up write cannot leave a wrong lead behind (about 1s with a PCF8563, up to
-    // about 7s in all).
-    for (int attempt = 0; attempt < 3; ++attempt) {
-      long error_us = 0;
-      if (RtcxWriteAligned(rtcx_lead_us, error_us) != rtcx_checked) {
-        break;
-      }
-      if (error_us > -20000L && error_us < 20000L) {
-        break;
-      }
-      long lead_us = rtcx_lead_us + error_us;  // late by error_us: start that much earlier next time
-      if (lead_us < 100000L || lead_us > 1900000L) {
-        Log.print("RTCx: the correction is not credible, the lead is left as it is\n");
-        break;
-      }
-      rtcx_lead_us = lead_us;
-      if (attempt < 2) {
-        Log.print("RTCx: written again with the corrected lead\n");
-      }
-    }
+    RtcxWriteFromSystemClock();  // once per NTP sync, here in loop()
   }
   return true;
 }
@@ -218,16 +265,27 @@ bool SetTimeFromRtcx(const char* time_zone)
 {
   bool rtcx_valid(false);
   struct tm tm_init = {};
-  tm_init.tm_isdst = -1;  // let mktime() work out whether daylight saving time applies to the RTC's wall-clock time
+  // Whether daylight saving time was in effect when the RTC was written, if it is known (-1: let mktime() work it out
+  // from the time zone's rules, which is wrong by an hour after a change while the device was off, and in the hour
+  // that repeats when daylight saving time ends). With it, mktime() reads the RTC right across any change since.
+  tm_init.tm_isdst = rtcx.IsdstWritten();
 
   setenv("TZ", time_zone, 1);
   tzset();  // assign timezone with setenv for mktime()
 
   // Accept only years after 2016: getLocalTime() treats older times as not set, and a 19xx year means the
   // RTC was set by other software (opposite century bit, and often UTC), so wait for NTP instead.
-  // An RTC whose marker is set holds a stale time (an interrupted write, or a changed time zone): wait too.
+  // An RTC whose marker is set holds a stale time (an interrupted write), and one written in another time zone holds
+  // that zone's local time: wait too. With no zone stored yet, the RTC is taken to be in this one, and that is stored.
+  String zone_stored = RtcxZoneStored();
+  if (zone_stored.length() == 0) {
+    RtcxZoneStore(time_zone);
+  }
   if (rtcx.TimeStale()) {
-    Log.print("RTCx not used: its time is stale (a write was interrupted, or the time zone was changed)\n");
+    Log.print("RTCx not used: its last write was interrupted or failed\n");
+  }
+  else if (zone_stored.length() != 0 && zone_stored != time_zone) {
+    Log.printf("RTCx not used: it holds the local time of another time zone (%s)\n", zone_stored.c_str());
   }
   else if (RtcxReadTime(tm_init) == 0 && tm_init.tm_year > 116) {
     // Read the RTC at a change of its seconds (within about 2s), so that the system clock is set within a few ms of

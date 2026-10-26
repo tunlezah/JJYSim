@@ -21,4 +21,3 @@ void WebUiJsonString(Print &out, const char *s);  // write s as a JSON string
 void WebUiStatusJson(Print &out);  // the object /api/status returns
 void WebUiSetLed(bool enable);     // LED monitor on/off, like the button
 void WebUiSyncTime();              // ask the NTP server for the time now
-void WebUiTimeZoneSaving(const char *time_zone);  // called before new settings are stored, with the time zone in them
