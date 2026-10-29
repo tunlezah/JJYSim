@@ -616,9 +616,15 @@ void setup()
 #if ARDUINO_USB_CDC_ON_BOOT && ARDUINO_USB_MODE
   // ATOMS3 Lite: Serial is the USB Serial/JTAG port (HWCDC). TcoGen() prints from the Ticker task, so it must not
   // wait for a USB host that has stopped reading: output that can't be queued at once is dropped instead.
-  // 1ms, not 0: from arduino-esp32 2.0.15 on, HWCDC::write() retries once per ms until its counter reaches 0,
+#if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 3, 9)
+  // 0, not 1: from arduino-esp32 3.3.9 on, HWCDC::write() gives up only after 20 tries that each wait the timeout,
+  // so 0 gives up at once, and 1 would hold up every write for 20ms while the host is not reading.
+  Serial.setTxTimeoutMs(0);
+#else
+  // 1ms, not 0: from arduino-esp32 2.0.15 to 3.3.8, HWCDC::write() retries once per ms until its counter reaches 0,
   // so 0 never gives up (the 2.0.14 core in M5Stack board package 2.1.4 gives up at once either way).
   Serial.setTxTimeoutMs(1);
+#endif
 #endif
   Log.println();
 
