@@ -2,6 +2,8 @@
 ## A JJY radio time signal simulator that runs on the ATOMS3 Lite and ATOM Lite/Matrix
 Note: the standard ATOMS3 (the non-Lite model) is not supported.
 
+### 2026-10-29 update
+- Added [FLASHING.md](./FLASHING.md), a step-by-step guide to installing the software and uploading the firmware from Windows, macOS or Linux, with the Arduino IDE or arduino-cli.
 ### 2026-10-24 update
 - Rev.3, and Rev.5 on board package 2.x: the USB serial timeout on the ATOMS3 Lite is now 1 ms instead of 0. From arduino-esp32 2.0.15 on, including every 3.x core, a timeout of 0 makes the serial driver retry for weeks when a connected PC stops reading, which would stop the time signal. The 2.0.14 core in M5Stack board package 2.1.4 was not affected. This concerns the default USB mode, "Hardware CDC and JTAG".
 - Rev.4: the same serial timeout as Rev.5 was added, so a PC that stops reading can't delay the time signal.
@@ -95,7 +97,7 @@ This project uses an M5Atom to generate a simulated JJY signal for radio-control
 Reference (Qiita, in Japanese): [Generating a simulated JJY time signal with Ticker on the M5StickC / M5Atom](https://qiita.com/BotanicFields/items/a78c80f947388caf0d36)
 
 ## 2. Software
-For details of the development environment and libraries, see the section for each revision above.
+For details of the development environment and libraries, see the section for each revision above. For step-by-step instructions on installing the software and uploading the firmware from Windows, macOS or Linux, see [FLASHING.md](./FLASHING.md).
 
 ## 3. Hardware
 Transmitting the JJY signal requires an antenna. For experimenting, you can connect a wire about 1 m long between the signal output pin (GPIO22 on the ATOM Lite/Matrix, GPIO5 on the ATOMS3 Lite) and GND, with a resistor of around 1 kΩ in series. Run the wire right next to the radio-controlled clock and the clock will pick up the magnetic field from the wire.
