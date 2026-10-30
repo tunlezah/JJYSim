@@ -136,6 +136,9 @@ We have made a printed circuit board (PCB) that an M5Atom can be mounted on.
 [PCB_with_M5AtomMatrix]  
 <img src="./BF-018A_M5AtomMatrix.JPG" width=300>
 
+### 3.2 3D-printed case
+The `case` folder has a two-part snap-fit case for the PCB with an ATOM Lite plugged in: print-ready STL files for an Ender 3 class printer, the parametric OpenSCAD source and a note on where every dimension comes from. See [case/README.md](./case/README.md).
+
 ## 4. Operation
 
 - After power-on or a reset, the device first starts the Wi-Fi connection process.
