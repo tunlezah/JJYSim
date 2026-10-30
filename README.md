@@ -4,8 +4,11 @@ Note: the standard ATOMS3 (the non-Lite model) is not supported.
 
 ### 2026-10-29 update
 - Added [FLASHING.md](./FLASHING.md), a step-by-step guide to installing the software and uploading the firmware from Windows, macOS or Linux, with the Arduino IDE or arduino-cli.
+- Rev.4/Rev.5 now also build with the newest versions: M5Stack board package 3.3.10 with M5Unified 0.2.28, M5GFX 0.2.35, FastLED 3.10.8 and WiFiManager 2.0.17. The board package 3.2.3 versions in the tables below still work.
+- Rev.4/Rev.5: from arduino-esp32 3.3.9 on (M5Stack board package 3.3.9 and later), the USB serial driver of the ATOMS3 Lite gives up a write only after 20 tries that each wait the serial timeout. With the 1 ms timeout, every message to a connected PC that has stopped reading would wait about 20 ms; about 11 messages go out at the start of each minute before the first marker ends, so the marker could end 20 to 30 ms late. With these cores the timeout is now 0, which gives up at once; older cores keep 1 ms.
+- The new versions have been compile-tested with arduino-cli, but not yet tested on hardware.
 ### 2026-10-24 update
-- Rev.3, and Rev.5 on board package 2.x: the USB serial timeout on the ATOMS3 Lite is now 1 ms instead of 0. From arduino-esp32 2.0.15 on, including every 3.x core, a timeout of 0 makes the serial driver retry for weeks when a connected PC stops reading, which would stop the time signal. The 2.0.14 core in M5Stack board package 2.1.4 was not affected. This concerns the default USB mode, "Hardware CDC and JTAG".
+- Rev.3, and Rev.5 on board package 2.x: the USB serial timeout on the ATOMS3 Lite is now 1 ms instead of 0. From arduino-esp32 2.0.15 up to 3.3.8, a timeout of 0 makes the serial driver retry for weeks when a connected PC stops reading, which would stop the time signal. The 2.0.14 core in M5Stack board package 2.1.4 was not affected. This concerns the default USB mode, "Hardware CDC and JTAG".
 - Rev.4: the same serial timeout as Rev.5 was added, so a PC that stops reading can't delay the time signal.
 - Rev.4/Rev.5: with board package 3.x, the carrier frequency printed at startup was 0, and the Rev.5 page could not show it, because it was read while the carrier was off. The carrier itself was correct.
 - Rev.3/Rev.4/Rev.5: when the clock is set from the RTC at startup, daylight saving time is now taken into account for time zones that have it. JST is unaffected. The RTC holds no record of whether its time was written during daylight saving time, so if the device was switched off across a daylight-saving change and starts without NTP, the time can still be an hour off until the first NTP reply.
@@ -39,18 +42,18 @@ Note: the standard ATOMS3 (the non-Lite model) is not supported.
 
 Compiles with:
 
-| Tool | Item | Board package 3.x (ATOMS3 Lite, ATOM Lite/Matrix) | Board package 2.x (ATOM Lite/Matrix) |
-|:-:|:-:|:-:|:-:|
-|Application| arduino-cli | 1.5.2-rc.1 | 1.5.2-rc.1 |
-|Boards Manager| M5Stack by M5Stack official | 3.2.3 | 2.1.4 |
-|Library Manager| M5Unified by M5Stack | 0.2.10 | 0.2.5 |
-|Library Manager| M5GFX by M5Stack | 0.2.16 | 0.2.6 |
-|Library Manager| FastLED by Daniel Garcia | 3.10.3 | 3.10.3 |
-|Library Manager| WiFiManager by tzapu | 2.0.17 | 2.0.17 |
+| Tool | Item | Board package 3.3.10 (ATOMS3 Lite, ATOM Lite/Matrix) | Board package 3.2.3 (ATOMS3 Lite, ATOM Lite/Matrix) | Board package 2.x (ATOM Lite/Matrix) |
+|:-:|:-:|:-:|:-:|:-:|
+|Application| arduino-cli | 1.5.2-rc.1 | 1.5.2-rc.1 | 1.5.2-rc.1 |
+|Boards Manager| M5Stack by M5Stack official | 3.3.10 | 3.2.3 | 2.1.4 |
+|Library Manager| M5Unified by M5Stack | 0.2.28 | 0.2.10 | 0.2.5 |
+|Library Manager| M5GFX by M5Stack | 0.2.35 | 0.2.16 | 0.2.6 |
+|Library Manager| FastLED by Daniel Garcia | 3.10.8 | 3.10.3 | 3.10.3 |
+|Library Manager| WiFiManager by tzapu | 2.0.17 | 2.0.17 | 2.0.17 |
 
 ### Rev.4
 - Folder: `BF-018ARev4`
-- In the Boards Manager, install version 3.x of the M5Stack board package.
+- In the Boards Manager, install version 3.x of the M5Stack board package: 3.3.10 or 3.2.3, with the library versions in the tables below.
 - Works with the ATOMS3 Lite.
 - On the M5Atom Lite/Matrix there is currently a bug that stops the LED from lighting up, so please use Rev.3 on those boards. A likely fix has been in since 2026-10-21, but it has not been tested on hardware.
 
@@ -63,6 +66,17 @@ Confirmed working with:
 |Library Manager| M5Unified by M5Stack | 0.2.10  |
 |Library Manager| M5GFX by M5Stack | 0.2.16  |
 |Library Manager| FastLED by Daniel Garcia | 3.10.3 |
+|Library Manager| WiFiManager by tzapu | 2.0.17 |
+
+Also compiles with (not yet tested on hardware):
+
+| Tool | Item | 2026-10-29 |
+|:-:|:-:|:-:|
+|Application| arduino-cli | 1.5.2-rc.1 |
+|Boards Manager| M5Stack by M5Stack official | 3.3.10 |
+|Library Manager| M5Unified by M5Stack | 0.2.28 |
+|Library Manager| M5GFX by M5Stack | 0.2.35 |
+|Library Manager| FastLED by Daniel Garcia | 3.10.8 |
 |Library Manager| WiFiManager by tzapu | 2.0.17 |
 
 ### Rev.3
@@ -253,7 +267,7 @@ Changing anything from the page needs a password. Set `web_password` in `BF-018A
 "Forget Wi-Fi network" on the page does the same as holding the button at reset (see 8(3)): the device restarts with its configuration portal running.
 
 ### (3) Load on the M5Atom
-The web UI adds about 90 KB of flash (40% of the 3 MB app partition is used on the ATOMS3 Lite) and about 13 KB of RAM. The JJY signal is generated by the Ticker, separately from the web server, which runs in `loop()`; the timing statistics on the page show whether anything disturbs it. While a browser has the page open, it asks the device for its status once a second (about 1 KB each time).
+The web UI adds about 90 KB of flash (on the ATOMS3 Lite, 40% of the 3 MB app partition is used with board package 3.2.3 and 41% with 3.3.10) and about 13 KB of RAM. The JJY signal is generated by the Ticker, separately from the web server, which runs in `loop()`; the timing statistics on the page show whether anything disturbs it. While a browser has the page open, it asks the device for its status once a second (about 1 KB each time).
 
 ### (4) Host name
 The name `jjy-sim` is set by `web_hostname`. Some devices, for example some Android phones, can't resolve `.local` names; use the IP address instead.

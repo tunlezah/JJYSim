@@ -13,7 +13,7 @@ You can build and upload with either of two tools. Both use the same board packa
 5. [Option B: arduino-cli](#5-option-b-arduino-cli)
 6. [Settings to check before uploading](#6-settings-to-check-before-uploading)
 7. [After uploading: the first start](#7-after-uploading-the-first-start)
-8. [Switching between board package 2.x and 3.x](#8-switching-between-board-package-2x-and-3x)
+8. [Switching to another set of versions](#8-switching-to-another-set-of-versions)
 9. [Troubleshooting](#9-troubleshooting)
 
 ### Quick reference
@@ -21,22 +21,30 @@ You can build and upload with either of two tools. Both use the same board packa
 | Item | Value |
 |:--|:--|
 | Board manager URL | `https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json` |
-| Board package | M5Stack by M5Stack official: 3.2.3 (Rev.4, Rev.5) or 2.1.4 (Rev.3, Rev.5 on the ATOM Lite/Matrix) |
+| Board package | M5Stack by M5Stack official: 3.3.10 or 3.2.3 (Rev.4, Rev.5), or 2.1.4 (Rev.3, Rev.5 on the ATOM Lite/Matrix) |
 | Board for the ATOMS3 Lite | M5AtomS3 (`m5stack:esp32:m5stack_atoms3`) |
 | Board for the ATOM Lite/Matrix | M5Atom (`m5stack:esp32:m5stack_atom`) |
+| Libraries with board package 3.3.10 | M5Unified 0.2.28, M5GFX 0.2.35, FastLED 3.10.8, WiFiManager 2.0.17 |
 | Libraries with board package 3.2.3 | M5Unified 0.2.10, M5GFX 0.2.16, FastLED 3.10.3, WiFiManager 2.0.17 |
 | Libraries with board package 2.1.4 | M5Unified 0.2.5, M5GFX 0.2.6, FastLED 3.10.3, WiFiManager 2.0.17 |
 | Serial monitor | 115200 baud |
 
 ## 1. Choose a revision and the matching software versions
-Each revision needs a particular version of the M5Stack board package, and the M5Unified and M5GFX versions that go with it. Install the versions in this table: they are the ones the README lists. Boards Manager and Library Manager offer newer versions by default (when this guide was written, in October 2026: board package 3.3.10, M5Unified 0.2.28 and M5GFX 0.2.35), but those have not been tested with this project.
+Each revision needs a particular version of the M5Stack board package, and the library versions that go with it. The versions below have been tested together; install all the versions of one set:
 
-| Revision (folder) | Boards | M5Stack board package | M5Unified | M5GFX | FastLED | WiFiManager | Status in the README |
-|:--|:--|:-:|:-:|:-:|:-:|:-:|:--|
-| Rev.5 (`BF-018ARev5`) | ATOMS3 Lite, ATOM Lite/Matrix | 3.2.3 | 0.2.10 | 0.2.16 | 3.10.3 | 2.0.17 | Compile-tested; not yet tested on hardware |
-| Rev.5 (`BF-018ARev5`) | ATOM Lite/Matrix | 2.1.4 | 0.2.5 | 0.2.6 | 3.10.3 | 2.0.17 | Compile-tested; not yet tested on hardware |
-| Rev.4 (`BF-018ARev4`) | ATOMS3 Lite | 3.2.3 | 0.2.10 | 0.2.16 | 3.10.3 | 2.0.17 | Confirmed working 2025-08-15; later fixes compile-tested only |
-| Rev.3 (`BF-018ARev3`) | ATOM Lite/Matrix, ATOMS3 Lite | 2.1.4 | 0.2.5 | 0.2.6 | 3.10.3 | 2.0.17 | Confirmed working 2025-08-15; later fixes compile-tested only |
+| Set | M5Stack board package | M5Unified | M5GFX | FastLED | WiFiManager |
+|:--|:-:|:-:|:-:|:-:|:-:|
+| 3.3.10 (the newest) | 3.3.10 | 0.2.28 | 0.2.35 | 3.10.8 | 2.0.17 |
+| 3.2.3 | 3.2.3 | 0.2.10 | 0.2.16 | 3.10.3 | 2.0.17 |
+| 2.1.4 | 2.1.4 | 0.2.5 | 0.2.6 | 3.10.3 | 2.0.17 |
+
+| Revision (folder) | Boards | Sets | Status in the README |
+|:--|:--|:--|:--|
+| Rev.5 (`BF-018ARev5`) | ATOMS3 Lite, ATOM Lite/Matrix | 3.3.10 or 3.2.3; on the ATOM Lite/Matrix also 2.1.4 | Compile-tested; not yet tested on hardware |
+| Rev.4 (`BF-018ARev4`) | ATOMS3 Lite | 3.3.10 or 3.2.3 | Confirmed working 2025-08-15 with the 3.2.3 set; the 3.3.10 set and later fixes compile-tested only |
+| Rev.3 (`BF-018ARev3`) | ATOM Lite/Matrix, ATOMS3 Lite | 2.1.4 | Confirmed working 2025-08-15; later fixes compile-tested only |
+
+The 3.3.10 set holds the newest versions available when this guide was written (October 2026). Boards Manager and Library Manager offer the newest versions by default, so if they offer something newer than these, it has not been tested with this project yet. Choose the 3.2.3 set instead if you want the versions Rev.4 was confirmed working with on hardware.
 
 - Rev.4 only compiles with board package 3.x and Rev.3 only with 2.x: each uses LEDC (PWM) functions that exist in just one of them. Rev.5 compiles with either.
 - Rev.4 on the ATOM Lite/Matrix: the README recommends Rev.3 instead, because the LED fix in Rev.4 has not been tested on hardware.
@@ -51,7 +59,7 @@ The README's tests used Arduino IDE 2.3.6 and arduino-cli 1.5.2-rc.1. The steps 
 ## 2. What you need
 - The board: an ATOMS3 Lite, ATOM Lite or ATOM Matrix.
 - A USB-C cable that carries data. Some cables only carry power; with one of those, the computer never sees the board.
-- A computer running Windows 10 or 11, macOS, or Linux, with an internet connection for the downloads. The board package is a large download: about 1.5 GB for 3.2.3 and 0.8 GB for 2.1.4, and it takes more space once unpacked.
+- A computer running Windows 10 or 11, macOS, or Linux, with an internet connection for the downloads. The board package is a large download: about 1.7 GB for 3.3.10, 1.5 GB for 3.2.3 and 0.8 GB for 2.1.4, and it takes more space once unpacked.
 - The antenna ([README section 3](./README.md#3-hardware)) and an RTC unit ([README section 8(2)](./README.md#2-using-an-rtc)) are not needed for flashing.
 
 What each operating system needs besides the IDE or arduino-cli (details in [section 3](#3-prepare-your-computer)):
@@ -96,7 +104,7 @@ Each revision is a sketch folder (`BF-018ARev3`, `BF-018ARev4`, `BF-018ARev5`, .
    softwareupdate --install-rosetta --agree-to-license
    ```
 
-   Board package 3.2.3 runs natively and does not need it.
+   Board packages 3.3.10 and 3.2.3 run natively and don't need it.
 3. **USB drivers:**
    - ATOMS3 Lite: none needed. The board appears as `/dev/cu.usbmodem...`.
    - ATOM Lite/Matrix: its USB serial interface is FTDI-compatible, and macOS's built-in driver normally handles it: the board appears as `/dev/cu.usbserial-...`. If it doesn't, install the FTDI VCP driver for macOS from the [ATOM Lite page](https://docs.m5stack.com/en/core/Atom-Lite) or [FTDI](https://ftdichip.com/drivers/vcp-drivers/), and allow it in **System Settings** > **Privacy & Security** (**System Preferences** > **Security & Privacy** on older macOS) if macOS asks.
@@ -150,18 +158,18 @@ Download Arduino IDE 2 from [arduino.cc/en/software](https://www.arduino.cc/en/s
 ### 4.3 Install the board package
 1. Open **Tools** > **Board** > **Boards Manager...** (or the boards icon in the left sidebar).
 2. Search for `M5Stack` and find **M5Stack** by **M5Stack official**. (**esp32** by **Espressif Systems** is a different package, and not the one the README was tested with.)
-3. In its version list, choose **3.2.3** (or **2.1.4**, see [section 1](#1-choose-a-revision-and-the-matching-software-versions)), then click **Install**. The newest version is selected by default; don't install that one.
+3. In its version list, choose the version of your set: **3.3.10**, **3.2.3** or **2.1.4** (see [section 1](#1-choose-a-revision-and-the-matching-software-versions)), then click **Install**. The list starts at the newest version; if that is newer than 3.3.10, it has not been tested with this project.
 4. Wait for the download and installation to finish. It can take a while (see [section 2](#2-what-you-need)).
 
 ### 4.4 Install the libraries
 Open **Tools** > **Manage Libraries...** (or the books icon in the left sidebar). For each library below: search for it, choose the version in its version list, and click **Install**.
 
-| Search for | Entry to install | With board package 3.2.3 | With board package 2.1.4 |
-|:--|:--|:-:|:-:|
-| `M5Unified` | M5Unified by M5Stack | 0.2.10 | 0.2.5 |
-| `M5GFX` | M5GFX by M5Stack | 0.2.16 | 0.2.6 |
-| `FastLED` | FastLED by Daniel Garcia | 3.10.3 | 3.10.3 |
-| `WiFiManager` | WiFiManager by tzapu | 2.0.17 | 2.0.17 |
+| Search for | Entry to install | 3.3.10 set | 3.2.3 set | 2.1.4 set |
+|:--|:--|:-:|:-:|:-:|
+| `M5Unified` | M5Unified by M5Stack | 0.2.28 | 0.2.10 | 0.2.5 |
+| `M5GFX` | M5GFX by M5Stack | 0.2.35 | 0.2.16 | 0.2.6 |
+| `FastLED` | FastLED by Daniel Garcia | 3.10.8 | 3.10.3 | 3.10.3 |
+| `WiFiManager` | WiFiManager by tzapu | 2.0.17 | 2.0.17 | 2.0.17 |
 
 When you install M5Unified, the IDE asks whether to install its dependency, M5GFX. Click **Install without dependencies**, and install M5GFX yourself at the version in the table. **Install All** would install the newest M5GFX instead, replacing a version you have already installed. If that happens, install M5GFX again at the version in the table.
 
@@ -258,16 +266,22 @@ arduino-cli lib update-index
 
 `config init` creates the configuration file. If you already have one, it says so; carry on with the next command.
 
-Then install the board package and the libraries for your revision ([section 1](#1-choose-a-revision-and-the-matching-software-versions)):
+Then install the board package and the libraries of the set you chose ([section 1](#1-choose-a-revision-and-the-matching-software-versions)):
 
 ```sh
-# board package 3.2.3: Rev.4, Rev.5
+# 3.3.10 set (the newest): Rev.4, Rev.5
+arduino-cli core install m5stack:esp32@3.3.10
+arduino-cli lib install --no-deps M5Unified@0.2.28 M5GFX@0.2.35 FastLED@3.10.8 WiFiManager@2.0.17
+```
+
+```sh
+# 3.2.3 set: Rev.4, Rev.5
 arduino-cli core install m5stack:esp32@3.2.3
 arduino-cli lib install --no-deps M5Unified@0.2.10 M5GFX@0.2.16 FastLED@3.10.3 WiFiManager@2.0.17
 ```
 
 ```sh
-# board package 2.1.4: Rev.3, Rev.5 on the ATOM Lite/Matrix
+# 2.1.4 set: Rev.3, Rev.5 on the ATOM Lite/Matrix
 arduino-cli core install m5stack:esp32@2.1.4
 arduino-cli lib install --no-deps M5Unified@0.2.5 M5GFX@0.2.6 FastLED@3.10.3 WiFiManager@2.0.17
 ```
@@ -347,22 +361,10 @@ In Rev.5, settings saved from the web page are stored in the board's flash memor
 
 To connect to a different Wi-Fi network later, hold the button while pressing reset until the LED lights green ([README section 8(3)](./README.md#3-erasing-the-stored-ssidkey)), or, with Rev.5, use **Forget Wi-Fi network** on the web page.
 
-## 8. Switching between board package 2.x and 3.x
-Only one version of the M5Stack board package can be installed at a time, and M5Unified and M5GFX must match it. To build a revision that needs the other version, install the other set; this replaces the installed versions. FastLED and WiFiManager stay the same.
-- **Arduino IDE:** in Boards Manager, choose the other version of M5Stack and click **Install**. Then, in Library Manager, install M5Unified and M5GFX at the versions in [section 1](#1-choose-a-revision-and-the-matching-software-versions) (click **Install without dependencies** for M5Unified).
-- **arduino-cli:**
-
-  ```sh
-  # to board package 2.1.4 (Rev.3)
-  arduino-cli core install m5stack:esp32@2.1.4
-  arduino-cli lib install --no-deps M5Unified@0.2.5 M5GFX@0.2.6
-  ```
-
-  ```sh
-  # back to board package 3.2.3 (Rev.4, Rev.5)
-  arduino-cli core install m5stack:esp32@3.2.3
-  arduino-cli lib install --no-deps M5Unified@0.2.10 M5GFX@0.2.16
-  ```
+## 8. Switching to another set of versions
+Only one version of the M5Stack board package can be installed at a time, and the libraries must match it. To build a revision that needs another set ([section 1](#1-choose-a-revision-and-the-matching-software-versions)), install that set; this replaces the installed versions.
+- **Arduino IDE:** in Boards Manager, choose the set's version of M5Stack and click **Install**. Then, in Library Manager, install M5Unified, M5GFX and FastLED at the set's versions (click **Install without dependencies** for M5Unified). WiFiManager is the same in every set.
+- **arduino-cli:** run the set's two commands from [section 5.2](#52-install-the-board-package-and-the-libraries).
 
 ## 9. Troubleshooting
 
@@ -384,10 +386,10 @@ Only one version of the M5Stack board package can be installed at a time, and M5
 - The wrong board is selected: M5AtomS3 is for the ATOMS3 Lite, M5Atom for the ATOM Lite/Matrix.
 
 **Compile error: `'ledcAttach' was not declared in this scope`**
-- Rev.4 needs board package 3.x: install 3.2.3 ([section 8](#8-switching-between-board-package-2x-and-3x)).
+- Rev.4 needs board package 3.x: install the 3.3.10 or 3.2.3 set ([section 8](#8-switching-to-another-set-of-versions)).
 
 **Compile error: `'ledcSetup' was not declared in this scope`, or the same for `ledcAttachPin`**
-- Rev.3 needs board package 2.x: install 2.1.4 ([section 8](#8-switching-between-board-package-2x-and-3x)), or use Rev.4 or Rev.5.
+- Rev.3 needs board package 2.x: install the 2.1.4 set ([section 8](#8-switching-to-another-set-of-versions)), or use Rev.4 or Rev.5.
 
 **Compile error: `M5Unified.h: No such file or directory` (or `FastLED.h`, `WiFiManager.h`)**
 - A library is missing: install it ([section 4.4](#44-install-the-libraries) or [section 5.2](#52-install-the-board-package-and-the-libraries)).
