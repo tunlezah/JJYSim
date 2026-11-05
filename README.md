@@ -2,6 +2,8 @@
 ## A JJY radio time signal simulator that runs on the ATOMS3 Lite and ATOM Lite/Matrix
 Note: the standard ATOMS3 (the non-Lite model) is not supported.
 
+### 2026-10-30 update
+- Added [BF-018a_DOC_en.pdf](./BF-018a_DOC_en.pdf), an English translation of the BF-018A manual ([BF-018a_DOC.pdf](./BF-018a_DOC.pdf), V05). The manual describes Rev.3/Rev.4; for Rev.5 and step-by-step upload instructions, see this README and FLASHING.md.
 ### 2026-10-29 update
 - Added [FLASHING.md](./FLASHING.md), a step-by-step guide to installing the software and uploading the firmware from Windows, macOS or Linux, with the Arduino IDE or arduino-cli.
 - Rev.4/Rev.5 now also build with the newest versions: M5Stack board package 3.3.10 with M5Unified 0.2.28, M5GFX 0.2.35, FastLED 3.10.8 and WiFiManager 2.0.17. The board package 3.2.3 versions in the tables below still work.
@@ -123,6 +125,8 @@ YouTube: [JJY Simulator by M5StickC for a radio controlled clock](https://youtu.
 We have made a printed circuit board (PCB) that an M5Atom can be mounted on.
 
 - [Schematic](./bf-018a_scm.pdf)
+
+- Manual: [Japanese original](./BF-018a_DOC.pdf), [English translation](./BF-018a_DOC_en.pdf)
 
 - The PCB  
 [PCB_front]  
