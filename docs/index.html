@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DIY JJY Simulator with M5StickC: Syncing My Radio-Controlled Clock | Tomokatsu Yukishita (archived copy)</title>
+<meta name="author" content="Tomokatsu Yukishita (雪下 智且)">
+<meta name="description" content="Archived reference copy of Tomokatsu Yukishita's article on syncing a radio-controlled clock indoors with an M5StickC and a JJY antenna board. Original: https://yre.jp/en/post/jjy/">
+<link rel="canonical" href="https://yre.jp/en/post/jjy/">
+<link rel="alternate" hreflang="ja" href="https://yre.jp/post/jjy/">
+<link rel="alternate" hreflang="en-US" href="https://yre.jp/en/post/jjy/">
+<meta property="og:type" content="article">
+<meta property="og:title" content="DIY JJY Simulator with M5StickC: Syncing My Radio-Controlled Clock (archived copy)">
+<meta property="og:description" content="An archived copy of Tomokatsu Yukishita's article. All credit to the author; original at yre.jp.">
+<meta property="og:image" content="assets/featured.jpg">
+<meta property="article:author" content="Tomokatsu Yukishita (雪下 智且)">
+<meta property="article:published_time" content="2022-05-12T00:00:00+00:00">
+<meta property="article:modified_time" content="2026-10-17T00:00:00+00:00">
+<meta name="theme-color" content="#3f51b5">
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1f2328;
+    --muted: #59636e;
+    --border: #d1d9e0;
+    --surface: #f6f8fa;
+    --accent: #3f51b5;
+    --link: #2f42a8;
+    --notice-bg: #fff8e1;
+    --notice-border: #e0b84a;
+    --notice-fg: #4a3b00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --fg: #e6e8eb;
+      --muted: #9aa3ad;
+      --border: #30363d;
+      --surface: #1c2026;
+      --accent: #8c9eff;
+      --link: #9fb0ff;
+      --notice-bg: #2a2410;
+      --notice-border: #8a7020;
+      --notice-fg: #f2e3b0;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 17px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+          "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif;
+  }
+  a { color: var(--link); }
+  a:hover { text-decoration-thickness: 2px; }
+  img { max-width: 100%; height: auto; }
+
+  .site-header {
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .site-header .inner {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 12px 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  .site-header .brand {
+    font-weight: 700;
+    color: var(--fg);
+    text-decoration: none;
+  }
+  .site-header .lang { font-size: 0.9rem; color: var(--muted); }
+
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+
+  .archive-notice {
+    background: var(--notice-bg);
+    border: 1px solid var(--notice-border);
+    border-left-width: 5px;
+    color: var(--notice-fg);
+    border-radius: 6px;
+    padding: 14px 18px;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    margin-bottom: 28px;
+  }
+  .archive-notice p { margin: 0 0 8px; }
+  .archive-notice p:last-child { margin-bottom: 0; }
+  .archive-notice a { color: inherit; font-weight: 600; }
+
+  h1 { font-size: 2rem; line-height: 1.25; margin: 0 0 12px; }
+  h2 { font-size: 1.45rem; line-height: 1.3; margin: 40px 0 12px; }
+  h3 { font-size: 1.15rem; margin: 28px 0 10px; }
+
+  .meta { color: var(--muted); font-size: 0.95rem; margin-bottom: 24px; }
+  .meta .author { color: var(--fg); font-weight: 600; }
+  .meta { display: flex; flex-wrap: wrap; gap: 2px 0; }
+  .meta > span { white-space: nowrap; }
+  .meta > span + span::before { content: "·"; margin: 0 8px; }
+
+  figure { margin: 24px 0; }
+  figure img { display: block; margin: 0 auto; border-radius: 4px; }
+  figcaption { color: var(--muted); font-size: 0.9rem; text-align: center; margin-top: 8px; }
+
+  .table-wrap { overflow-x: auto; margin: 16px 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+  th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; vertical-align: top; }
+  thead th { background: var(--surface); }
+
+  blockquote {
+    margin: 20px 0;
+    padding: 4px 18px;
+    border-left: 4px solid var(--accent);
+    background: var(--surface);
+    border-radius: 0 6px 6px 0;
+  }
+
+  .product-cards { display: grid; gap: 10px; margin: 16px 0; }
+  .product-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--fg);
+  }
+  .product-card:hover { border-color: var(--accent); }
+  .product-card .btn {
+    flex: none;
+    font-size: 0.85rem;
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: var(--accent);
+    color: var(--bg);
+    white-space: nowrap;
+  }
+
+  .tags { margin: 36px 0 0; display: flex; flex-wrap: wrap; gap: 6px; }
+  .tags a {
+    font-size: 0.82rem;
+    padding: 2px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    text-decoration: none;
+    color: var(--muted);
+    background: var(--surface);
+  }
+
+  .author-card {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    margin-top: 36px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+  }
+  .author-card img { width: 80px; height: 80px; border-radius: 50%; flex: none; }
+  .author-card h2 { font-size: 1.15rem; margin: 0 0 2px; }
+  .author-card .role { color: var(--muted); font-size: 0.92rem; margin: 0 0 6px; }
+  .author-card p { margin: 0 0 8px; }
+  .author-card ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.92rem; }
+
+  .related { margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--border); }
+  .related h2 { font-size: 1.15rem; margin-top: 0; }
+  .related ul { padding-left: 20px; margin: 0; }
+
+  .site-footer {
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+  .site-footer .inner { max-width: 760px; margin: 0 auto; padding: 20px 16px 32px; }
+  .site-footer p { margin: 0 0 8px; }
+
+  @media (max-width: 520px) {
+    body { font-size: 16px; }
+    h1 { font-size: 1.6rem; }
+    .author-card { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="inner">
+    <a class="brand" href="https://yre.jp/en/">Tomokatsu Yukishita | yre.jp</a>
+    <span class="lang">Original: <a href="https://yre.jp/en/post/jjy/">English</a> · <a href="https://yre.jp/post/jjy/" lang="ja">日本語</a></span>
+  </div>
+</header>
+
+<main>
+  <aside class="archive-notice" role="note" aria-label="About this copy">
+    <p><strong>This is an archived reference copy, not the original.</strong> The article below was written by
+      <strong>Tomokatsu Yukishita (<span lang="ja">雪下 智且</span>)</strong> and published on the author's own site,
+      <a href="https://yre.jp/en/post/jjy/">yre.jp/en/post/jjy</a>. All credit and all rights belong to the author.</p>
+    <p>It is kept here by the <a href="https://github.com/tunlezah/JJYSim">JJYSim</a> project only so that a copy stays available:
+      this write-up is what finally got the maintainer's radio-controlled watches set to the correct time. Please read and link to the
+      <a href="https://yre.jp/en/post/jjy/">original article</a> while it is online.</p>
+    <p>Copied on 10 November 2026 from the version last updated 17 October 2026. The text, photos and links are the author's;
+      only the page layout is new. Analytics scripts, share buttons and the Amazon product thumbnails have been left out.</p>
+  </aside>
+
+  <article>
+    <h1>DIY JJY Simulator with M5StickC: Syncing My Radio-Controlled Clock</h1>
+    <div class="meta">
+      <span class="author">Tomokatsu Yukishita (<span lang="ja">雪下 智且</span>)</span>
+      <span>First published 2022/05/12</span>
+      <span>Last updated on 2026/10/17</span>
+      <span>4 min read</span>
+    </div>
+
+    <figure>
+      <img src="assets/featured.jpg" width="800" height="533"
+           alt="An orange M5StickC showing the time on its screen, plugged into a green JJY antenna board">
+      <figcaption>Image credit: <a href="https://yre.jp"><strong>Tomokatsu Yukishita</strong></a></figcaption>
+    </figure>
+
+    <p>After moving to a new home where my radio-controlled clock could no longer receive the JJY time signal, I built a JJY simulator using an M5StickC and a JJY antenna board. This is a record of how I solved the problem for well under JPY 5,000.</p>
+
+    <h2 id="the-problem-radio-controlled-clock-stopped-syncing-after-moving">The Problem: Radio-Controlled Clock Stopped Syncing After Moving</h2>
+    <p>Radio-controlled clocks are convenient precisely because they set themselves automatically. After moving, however, my clock stopped receiving the JJY signal indoors, and the displayed time slowly drifted out of sync.</p>
+    <p>The clock could still pick up the signal near a window, but carrying it there and back every time it needed syncing was not a practical long-term solution.</p>
+
+    <h2 id="what-is-jjy">What Is JJY?</h2>
+    <p>JJY is the call sign for Japan&rsquo;s standard time radio signal, broadcast by the National Institute of Information and Communications Technology (NICT). Two transmitters cover the country: 40 kHz from Fukushima (Ōtakadoya-yama) and 60 kHz from Saga (Haganeyama). Radio-controlled clocks receive this signal to maintain accurate time automatically.</p>
+    <p>The device described in this article <strong>simulates the JJY signal and rebroadcasts it locally</strong>, allowing a clock to sync even when it cannot receive the real transmission.</p>
+
+    <h2 id="commercial-retransmitters-are-expensive">Commercial Retransmitters Are Expensive</h2>
+    <p>There are commercial products designed to solve exactly this problem — they receive accurate time from NTP servers or GPS and retransmit a JJY-compatible signal indoors.</p>
+    <div class="product-cards">
+      <a class="product-card" href="https://amzn.to/3OviZVw" rel="noopener nofollow sponsored">
+        <span>Kyohritsu Denshi AC-Synchronized Time Transmitter P18-NTPAC</span><span class="btn" lang="ja">Amazonで見る</span>
+      </a>
+      <a class="product-card" href="https://amzn.to/4sHgo93" rel="noopener nofollow sponsored">
+        <span>KEISEEDS GPS Radio Clock Repeater P18-NTPGR</span><span class="btn" lang="ja">Amazonで見る</span>
+      </a>
+      <a class="product-card" href="https://amzn.to/4tcEJod" rel="noopener nofollow sponsored">
+        <span>Radio Clock Signal Transmitter with Built-in Clock P18-NTPLR</span><span class="btn" lang="ja">Amazonで見る</span>
+      </a>
+    </div>
+    <p>These products work well, but they typically cost JPY 10,000–30,000. Hard to justify for a single clock at home.</p>
+
+    <h2 id="the-diy-solution-atom-lite--jjy-antenna-board">The DIY Solution: ATOM Lite + JJY Antenna Board</h2>
+    <p>Searching <a href="https://www.switch-science.com/">Switch Science</a> (a Japanese electronics parts retailer), I found a JJY antenna board designed to work with M5Stack devices — exactly what I needed.</p>
+
+    <h3 id="required-parts">Required Parts</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Product</th><th>Link</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>JJY antenna board for M5StickC</td><td><a href="https://www.switch-science.com/products/6527">Switch Science</a></td><td>M5StickC specific</td></tr>
+          <tr><td>JJY antenna board for M5Atom</td><td><a href="https://www.switch-science.com/products/6746">Switch Science</a></td><td>For ATOM Lite/Matrix</td></tr>
+          <tr><td>M5StickC</td><td><a href="https://www.switch-science.com/products/5517">Switch Science</a></td><td><strong>Discontinued</strong></td></tr>
+          <tr><td>ATOM Lite</td><td><a href="https://www.switch-science.com/products/6262">Switch Science</a></td><td>Available now — recommended</td></tr>
+          <tr><td>ATOM Matrix</td><td><a href="https://www.switch-science.com/products/6260">Switch Science</a></td><td>Available now</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <blockquote>
+      <p><strong>Note:</strong> M5StickC has been discontinued. For new builds, the recommended combination is <strong>ATOM Lite</strong> with the <strong>JJY antenna board for M5Atom</strong>. The original article used M5StickC, which is what appears in the photos below.</p>
+    </blockquote>
+    <p>At the time of purchase, the antenna board and M5 device together came to under JPY 5,000 (prices may vary — check current listings before ordering). That is roughly one-third to one-sixth the cost of a commercial retransmitter.</p>
+
+    <h2 id="setup">Setup</h2>
+    <p>Setup follows the instructions in the GitHub repository linked from the Switch Science product page:</p>
+    <ul>
+      <li><a href="https://github.com/botanicfields/BF-018A">Project page — GitHub: BF-018A</a></li>
+      <li><a href="https://github.com/botanicfields/BF-018A/blob/main/BF-018A/BF-018A.ino">JJY simulator sketch (.ino)</a></li>
+      <li><a href="https://qiita.com/BotanicFields/items/a78c80f947388caf0d36">Qiita article: Generating a JJY-like signal with M5StickC / M5Atom using Ticker</a></li>
+    </ul>
+    <p>Flash the firmware following the instructions and there are no unusual steps. It worked on the first attempt without any issues.</p>
+
+    <h2 id="testing">Testing</h2>
+    <p>With the firmware flashed, connect the M5 device to the JJY antenna board and place it next to the radio-controlled clock.</p>
+    <figure id="figure-place-the-device-right-next-to-the-clock-to-receive-the-simulated-signal">
+      <img src="assets/beside-clock.webp" width="800" height="533" loading="lazy"
+           alt="M5StickC with JJY antenna board placed directly beside a radio-controlled clock, which is attempting to receive the simulated signal">
+      <figcaption>Place the device right next to the clock to receive the simulated signal</figcaption>
+    </figure>
+    <p>The transmitted signal is weak and short-range. The device needs to be within a few centimeters to a few tens of centimeters of the clock to sync reliably. In practice this is not a problem — once the clock has synced, it holds accurate time on its own until the next sync cycle.</p>
+
+    <h2 id="known-limitation">Known Limitation</h2>
+    <p>With the firmware I used at the time, <strong>the Wi-Fi connection sometimes dropped near a microwave oven and did not reconnect automatically</strong>. A manual restart is required. Either keep the device away from the microwave, or add a periodic auto-reset to the firmware.</p>
+
+    <h2 id="summary">Summary</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr><td>Total parts cost</td><td>Under JPY 5,000 (roughly 1/3–1/6 of commercial alternatives)</td></tr>
+          <tr><td>Soldering required</td><td>None</td></tr>
+          <tr><td>Setup difficulty</td><td>Low — flash firmware from GitHub and place next to clock</td></tr>
+          <tr><td>Signal range</td><td>Short (a few cm to a few tens of cm)</td></tr>
+          <tr><td>Known issue</td><td>Wi-Fi drops near microwave, requires manual restart</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>In my setup, the clock could sync as long as I placed the antenna close beside it.</p>
+
+    <nav class="tags" aria-label="Tags on the original site">
+      <a href="https://yre.jp/en/tag/develop/">Develop</a>
+      <a href="https://yre.jp/en/tag/esp32/">ESP32</a>
+      <a href="https://yre.jp/en/tag/m5stack/">M5Stack</a>
+      <a href="https://yre.jp/en/tag/radio-clock/">Radio Clock</a>
+      <a href="https://yre.jp/en/tag/jjy/">JJY</a>
+      <a href="https://yre.jp/en/tag/iot/">IoT</a>
+      <a href="https://yre.jp/en/tag/electronics/">Electronics</a>
+      <a href="https://yre.jp/en/tag/atom-lite/">ATOM Lite</a>
+      <a href="https://yre.jp/en/tag/diy/">DIY</a>
+      <a href="https://yre.jp/en/tag/time-synchronization/">Time Synchronization</a>
+    </nav>
+
+    <section class="author-card" aria-label="About the author">
+      <a href="https://yre.jp/"><img src="assets/author-avatar.jpg" width="80" height="80" alt="Tomokatsu Yukishita (雪下 智且)"></a>
+      <div>
+        <h2><a href="https://yre.jp/">Tomokatsu Yukishita (<span lang="ja">雪下 智且</span>)</a></h2>
+        <p class="role">Engineering Manager / Real Estate Transaction Agent</p>
+        <p>I work on automotive software and write about Mac setups, Raspberry Pi projects, and photography gear I use.</p>
+        <ul>
+          <li><a href="https://yre.jp/en/profile">Profile</a></li>
+          <li><a href="https://x.com/t_yukishita">X</a></li>
+          <li><a href="https://github.com/yukishita">GitHub</a></li>
+          <li><a href="https://www.linkedin.com/in/tomokatsuyukishita/">LinkedIn</a></li>
+          <li><a href="https://www.instagram.com/t.yukishita/">Instagram</a></li>
+          <li><a href="https://www.youtube.com/@tomokatsu">YouTube</a></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="related" aria-label="Related posts on the original site">
+      <h2>Related (on yre.jp)</h2>
+      <ul>
+        <li><a href="https://yre.jp/en/post/raspi-photoframe-with-sensor/">Raspberry Pi 3 + Official 7-inch Touchscreen Photo Frame with Ambient Light Sensor Auto-Brightness (BH1750FVI + I2C + Python)</a></li>
+        <li><a href="https://yre.jp/en/post/raspi-photoframe/">Raspberry Pi 4 DIY Photo Frame with Google Drive, rclone, and Python</a></li>
+        <li><a href="https://yre.jp/en/post/co2-mini/">Continuous CO2 Monitoring with Raspberry Pi, CO2-mini, and Zabbix: A Complete Setup Guide</a></li>
+        <li><a href="https://yre.jp/en/post/m1mac_h265/">M1 Pro MacBook Pro H.265 Hardware Encoding with ffmpeg: videotoolbox vs libx265 Benchmark</a></li>
+        <li><a href="https://yre.jp/en/post/mac_ffmpeg/">How to Install ffmpeg on macOS with Homebrew: Commands, Verification, and Usage Examples</a></li>
+      </ul>
+    </section>
+  </article>
+</main>
+
+<footer class="site-footer">
+  <div class="inner">
+    <p>© 2026 Tomokatsu Yukishita. Text and photos are the author's work, reproduced here unchanged with full attribution as a reference copy.
+      Original article: <a href="https://yre.jp/en/post/jjy/">https://yre.jp/en/post/jjy/</a>
+      (<a href="https://yre.jp/post/jjy/" lang="ja">日本語版</a>).</p>
+    <p>Kept by the <a href="https://github.com/tunlezah/JJYSim">JJYSim</a> project. If you are the author and would like this copy changed or taken down,
+      please <a href="https://github.com/tunlezah/JJYSim/issues">open an issue</a> and it will be done.</p>
+  </div>
+</footer>
+
+</body>
+</html>

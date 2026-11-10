@@ -2,6 +2,8 @@
 ## A JJY radio time signal simulator that runs on the ATOMS3 Lite and ATOM Lite/Matrix
 Note: the standard ATOMS3 (the non-Lite model) is not supported.
 
+### 2026-11-10 update
+- Added [docs/index.html](./docs/index.html), an archived reference copy of Tomokatsu Yukishita's article [DIY JJY Simulator with M5StickC: Syncing My Radio-Controlled Clock](https://yre.jp/en/post/jjy/), served with GitHub Pages at https://tunlezah.github.io/JJYSim/. All credit belongs to the author; please read the original while it is online.
 ### 2026-10-30 update
 - Added [BF-018a_DOC_en.pdf](./BF-018a_DOC_en.pdf), an English translation of the BF-018A manual ([BF-018a_DOC.pdf](./BF-018a_DOC.pdf), V05). The manual describes Rev.3/Rev.4; for Rev.5 and step-by-step upload instructions, see this README and FLASHING.md.
 ### 2026-10-29 update
@@ -111,6 +113,8 @@ Confirmed working with:
 This project uses an M5Atom to generate a simulated JJY signal for radio-controlled clocks, so you can set the time on clocks that are out of range of the real JJY broadcast. It gets the time via NTP over Wi-Fi and outputs the JJY signal on a GPIO pin.
 
 Reference (Qiita, in Japanese): [Generating a simulated JJY time signal with Ticker on the M5StickC / M5Atom](https://qiita.com/BotanicFields/items/a78c80f947388caf0d36)
+
+Build write-up by Tomokatsu Yukishita: [DIY JJY Simulator with M5StickC: Syncing My Radio-Controlled Clock](https://yre.jp/en/post/jjy/) ([日本語](https://yre.jp/post/jjy/)). An archived copy is kept at https://tunlezah.github.io/JJYSim/ ([docs/index.html](./docs/index.html)).
 
 ## 2. Software
 For details of the development environment and libraries, see the section for each revision above. For step-by-step instructions on installing the software and uploading the firmware from Windows, macOS or Linux, see [FLASHING.md](./FLASHING.md).
