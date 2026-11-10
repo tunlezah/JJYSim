@@ -193,16 +193,19 @@
   .project-note h2 { font-size: 1.3rem; margin: 0 0 10px; }
   .project-note p { margin: 0 0 12px; }
   .project-note ul { margin: 0 0 12px; padding-left: 22px; }
-  .project-note .demo-link {
+  .note-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 14px; }
+  .project-note .demo-link,
+  .project-note .repo-link {
     display: inline-block;
-    margin: 4px 0 14px;
     padding: 8px 16px;
+    border: 1px solid var(--accent);
     border-radius: 6px;
-    background: var(--accent);
-    color: var(--bg);
     font-weight: 600;
     text-decoration: none;
   }
+  .project-note .demo-link { background: var(--accent); color: var(--bg); }
+  .project-note .repo-link { color: var(--link); }
+  .archive-notice .project-links { font-weight: 600; }
   .project-note .small { font-size: 0.92rem; color: var(--muted); margin-bottom: 0; }
 
   .site-footer {
@@ -240,6 +243,8 @@
     <p>Copied on 10 November 2026 from the version last updated 17 October 2026. The text, photos and links are the author's;
       only the page layout is new. Analytics scripts, share buttons and the Amazon product thumbnails have been left out.
       The <a href="#jjysim-web-interface">note at the end</a> about the JJYSim web interface is the project's, not the author's.</p>
+    <p class="project-links">JJYSim project: <a href="https://github.com/tunlezah/JJYSim">github.com/tunlezah/JJYSim</a>
+      · <a href="web-ui-demo/">Web UI demo</a></p>
   </aside>
 
   <article>
@@ -392,7 +397,10 @@
       <li>check the Wi-Fi, NTP and status LED, and follow the serial log without a USB cable</li>
       <li>change the carrier frequency (40 or 60 kHz), the time zone and the NTP server</li>
     </ul>
-    <a class="demo-link" href="web-ui-demo/">Try the web interface demo</a>
+    <div class="note-actions">
+      <a class="demo-link" href="web-ui-demo/">Try the web interface demo</a>
+      <a class="repo-link" href="https://github.com/tunlezah/JJYSim">JJYSim on GitHub</a>
+    </div>
     <p>The demo is the device's own page running in your browser against an emulated device, so you can explore it without any hardware.</p>
     <p class="small">Rev.5 has been compile-tested but not yet tested on hardware. To install it, see
       <a href="https://github.com/tunlezah/JJYSim#9-web-ui-rev5">section 9 of the README</a> and the
@@ -405,7 +413,9 @@
     <p>© 2026 Tomokatsu Yukishita. Text and photos are the author's work, reproduced here unchanged with full attribution as a reference copy.
       Original article: <a href="https://yre.jp/en/post/jjy/">https://yre.jp/en/post/jjy/</a>
       (<a href="https://yre.jp/post/jjy/" lang="ja">日本語版</a>).</p>
-    <p>Kept by the <a href="https://github.com/tunlezah/JJYSim">JJYSim</a> project. If you are the author and would like this copy changed or taken down,
+    <p>Kept by the JJYSim project: <a href="https://github.com/tunlezah/JJYSim">github.com/tunlezah/JJYSim</a>
+      · <a href="web-ui-demo/">Web UI demo</a>.</p>
+    <p>If you are the author and would like this copy changed or taken down,
       please <a href="https://github.com/tunlezah/JJYSim/issues">open an issue</a> and it will be done.</p>
   </div>
 </footer>
