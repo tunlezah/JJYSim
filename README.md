@@ -4,6 +4,7 @@ Note: the standard ATOMS3 (the non-Lite model) is not supported.
 
 ### 2026-11-10 update
 - Added [docs/index.html](./docs/index.html), an archived reference copy of Tomokatsu Yukishita's article [DIY JJY Simulator with M5StickC: Syncing My Radio-Controlled Clock](https://yre.jp/en/post/jjy/), served with GitHub Pages at https://tunlezah.github.io/JJYSim/. All credit belongs to the author; please read the original while it is online.
+- Added a demo of the Rev.5 web UI that runs in the browser with a simulated device: https://tunlezah.github.io/JJYSim/web-ui-demo/ (see section 9).
 ### 2026-10-30 update
 - Added [BF-018a_DOC_en.pdf](./BF-018a_DOC_en.pdf), an English translation of the BF-018A manual ([BF-018a_DOC.pdf](./BF-018a_DOC.pdf), V05). The manual describes Rev.3/Rev.4; for Rev.5 and step-by-step upload instructions, see this README and FLASHING.md.
 ### 2026-10-29 update
@@ -270,6 +271,8 @@ Settings you can change on the page (stored in flash, and applied when the devic
 - NTP server
 
 The defaults are in `settings` at the top of `BF-018ARev5.ino`.
+
+To try the page without a device, open the [web UI demo](https://tunlezah.github.io/JJYSim/web-ui-demo/). It is the same page with `docs/web-ui-demo/emulator.js` standing in for the device, so the time code, serial log and buttons work, but nothing is saved. After changing `BF_WebUiPage.h`, run `python3 tools/make_web_ui_demo.py` to update the demo.
 
 ### (1) Password
 Changing anything from the page needs a password. Set `web_password` in `BF-018ARev5.ino` before uploading; the user name is `admin` (`web_user`). While `web_password` is empty, the page is read-only. The browser asks for the password the first time you change something (HTTP Digest authentication). The page uses plain HTTP, so use it on a network you trust.
