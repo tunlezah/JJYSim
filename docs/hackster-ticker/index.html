@@ -1,0 +1,1039 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Generate Standard Radio Wave JJY with Ticker of M5StickC | BotanicFields (archived copy from Hackster.io)</title>
+<meta name="author" content="BotanicFields">
+<meta name="description" content="Archived copy of BotanicFields' Hackster.io project on generating the JJY time signal with Ticker on the M5StickC. Original: https://www.hackster.io/botanicfields/generate-standard-radio-wave-jjy-with-ticker-of-m5stickc-0330e0">
+<link rel="canonical" href="https://www.hackster.io/botanicfields/generate-standard-radio-wave-jjy-with-ticker-of-m5stickc-0330e0">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Generate Standard Radio Wave JJY with Ticker of M5StickC (archived copy)">
+<meta property="og:description" content="An archived copy of BotanicFields' Hackster.io project. All credit to the author; original on Hackster.io.">
+<meta property="og:image" content="../assets/hackster-ticker-cover.webp">
+<meta property="article:author" content="BotanicFields">
+<meta property="article:published_time" content="2020-07-28">
+<meta name="theme-color" content="#3f51b5">
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1f2328;
+    --muted: #59636e;
+    --border: #d1d9e0;
+    --surface: #f6f8fa;
+    --code-bg: #f6f8fa;
+    --accent: #3f51b5;
+    --link: #2f42a8;
+    --notice-bg: #fff8e1;
+    --notice-border: #e0b84a;
+    --notice-fg: #4a3b00;
+    --tn-bg: #eef1fb;
+    --tn-border: #8c9ad6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --fg: #e6e8eb;
+      --muted: #9aa3ad;
+      --border: #30363d;
+      --surface: #1c2026;
+      --code-bg: #1c2026;
+      --accent: #8c9eff;
+      --link: #9fb0ff;
+      --notice-bg: #2a2410;
+      --notice-border: #8a7020;
+      --notice-fg: #f2e3b0;
+      --tn-bg: #1b2034;
+      --tn-border: #4b5a9a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 17px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+          "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif;
+  }
+  a { color: var(--link); overflow-wrap: anywhere; }
+  a:hover { text-decoration-thickness: 2px; }
+  img { max-width: 100%; height: auto; }
+
+  .site-header {
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .site-header .inner {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 12px 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  .site-header .brand {
+    font-weight: 700;
+    color: var(--fg);
+    text-decoration: none;
+  }
+  .site-header .lang { font-size: 0.9rem; color: var(--muted); }
+
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+
+  .archive-notice {
+    background: var(--notice-bg);
+    border: 1px solid var(--notice-border);
+    border-left-width: 5px;
+    color: var(--notice-fg);
+    border-radius: 6px;
+    padding: 14px 18px;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    margin-bottom: 28px;
+  }
+  .archive-notice p { margin: 0 0 8px; }
+  .archive-notice p:last-child { margin-bottom: 0; }
+  .archive-notice a { color: inherit; font-weight: 600; }
+  .archive-notice .original-link {
+    display: inline-block;
+    margin: 2px 0 4px;
+    padding: 6px 14px;
+    border: 1px solid var(--notice-border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--link);
+    text-decoration: none;
+  }
+  .archive-notice .project-links { font-weight: 600; }
+
+  h1 { font-size: 2rem; line-height: 1.25; margin: 0 0 6px; }
+  h2 { font-size: 1.45rem; line-height: 1.3; margin: 40px 0 12px; }
+  h3 { font-size: 1.2rem; margin: 30px 0 10px; }
+  h4 { font-size: 1.05rem; margin: 24px 0 8px; }
+  .title-ja { color: var(--muted); font-size: 1.05rem; margin: 0 0 14px; }
+
+  .meta { color: var(--muted); font-size: 0.95rem; margin-bottom: 24px; }
+  .meta .author { color: var(--fg); font-weight: 600; }
+  .meta { display: flex; flex-wrap: wrap; gap: 2px 0; }
+  .meta > span { white-space: nowrap; }
+  .meta > span + span::before { content: "·"; margin: 0 8px; }
+
+  figure { margin: 24px 0; }
+  figure img { display: block; margin: 0 auto; border-radius: 4px; }
+  /* The NICT time-code PNG has a transparent background: keep diagrams on white in both themes. */
+  figure img.diagram { border: 1px solid var(--border); background: #fff; }
+  figure.photos { display: grid; gap: 12px; }
+  figcaption { color: var(--muted); font-size: 0.9rem; text-align: center; margin-top: 8px; }
+
+  .table-wrap { overflow-x: auto; margin: 16px 0; }
+  table { border-collapse: collapse; font-size: 0.95rem; }
+  th, td { border: 1px solid var(--border); padding: 6px 14px; vertical-align: top; }
+  thead th { background: var(--surface); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.range { text-align: center; white-space: nowrap; }
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 0.88em;
+  }
+  :not(pre) > code {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0 4px;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    line-height: 1.5;
+    font-size: 0.95rem;
+    margin: 16px 0;
+  }
+  pre code { font-size: 0.85rem; }
+
+  sup.fn { font-size: 0.72em; line-height: 0; }
+  sup.fn a { text-decoration: none; }
+  sup.fn a::before { content: "["; }
+  sup.fn a::after { content: "]"; }
+
+  .tn {
+    margin: 16px 0;
+    padding: 10px 14px;
+    background: var(--tn-bg);
+    border: 1px dashed var(--tn-border);
+    border-radius: 6px;
+    font-size: 0.93rem;
+  }
+  .tn .tn-label {
+    font-weight: 700;
+    font-size: 0.78rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: block;
+    margin-bottom: 2px;
+  }
+  .tn p { margin: 0 0 6px; }
+  .tn p:last-child { margin-bottom: 0; }
+  .tn ul { margin: 4px 0 0; padding-left: 20px; }
+  .tn dl { margin: 4px 0 0; display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; }
+  .tn dt { font-weight: 600; }
+  .tn dd { margin: 0; }
+
+  .footnotes { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 0.9rem; }
+  .footnotes h2 { font-size: 1.15rem; margin-top: 0; }
+  .footnotes ol { padding-left: 28px; margin: 0; }
+  .footnotes li { margin-bottom: 4px; }
+  .footnotes li:target { background: var(--notice-bg); border-radius: 4px; }
+  .footnotes .back { text-decoration: none; margin-left: 4px; }
+
+  .tags { margin: 36px 0 0; display: flex; flex-wrap: wrap; gap: 6px; }
+  .tags a {
+    font-size: 0.82rem;
+    padding: 2px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    text-decoration: none;
+    color: var(--muted);
+    background: var(--surface);
+  }
+
+  .project-note {
+    margin-top: 40px;
+    padding: 18px 20px;
+    border: 1px solid var(--border);
+    border-top: 4px solid var(--accent);
+    border-radius: 8px;
+    background: var(--surface);
+  }
+  .project-note .label {
+    margin: 0 0 4px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .project-note h2 { font-size: 1.3rem; margin: 0 0 10px; }
+  .project-note p { margin: 0 0 12px; }
+  .project-note p:last-child { margin-bottom: 0; }
+  .note-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 14px; }
+  .project-note .demo-link,
+  .project-note .repo-link {
+    display: inline-block;
+    padding: 8px 16px;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .project-note .demo-link { background: var(--accent); color: var(--bg); }
+  .project-note .repo-link { color: var(--link); }
+
+  .site-footer {
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+  .site-footer .inner { max-width: 760px; margin: 0 auto; padding: 20px 16px 32px; }
+  .site-footer p { margin: 0 0 8px; }
+
+  @media (max-width: 520px) {
+    body { font-size: 16px; }
+    h1 { font-size: 1.6rem; }
+    pre code { font-size: 0.8rem; }
+    .tn dl { grid-template-columns: 1fr; }
+    .tn dd { margin-bottom: 4px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="inner">
+    <a class="brand" href="https://www.hackster.io/botanicfields">BotanicFields on Hackster.io</a>
+    <span class="lang">Original: <a href="https://www.hackster.io/botanicfields/generate-standard-radio-wave-jjy-with-ticker-of-m5stickc-0330e0">Hackster.io</a></span>
+  </div>
+</header>
+
+<main>
+  <aside class="archive-notice" role="note" aria-label="About this copy">
+    <p><strong>This is an archived copy, not the original.</strong> The project below, “Generate Standard Radio Wave JJY with Ticker of
+      M5StickC”, is by <strong>BotanicFields</strong>. It was posted on Hackster.io by vany5921 on 28 July 2020 under the MIT licence.
+      All credit belongs to BotanicFields. It is kept here only so that the information stays available if the original goes offline.</p>
+    <p><a class="original-link" href="https://www.hackster.io/botanicfields/generate-standard-radio-wave-jjy-with-ticker-of-m5stickc-0330e0">Read the original on Hackster.io →</a></p>
+    <p>Copied on 19 November 2026 from the page as saved in a browser. The text, code, schematic and photos are reproduced unchanged,
+      including the page's own wording and formatting quirks; only the layout is new, and Hackster's scripts and trackers are left out.
+      The project is an English version of BotanicFields' Qiita article (in Japanese), which this site also has
+      <a href="../jjy-ticker/">in a fuller English translation</a>. Numbers such as “NICT7” below are footnote numbers from that
+      article, which the Hackster page shows without their footnotes, and the Ticker timing table in section 5 lost its layout on Hackster;
+      both are complete in the translation.</p>
+    <p class="project-links">JJYSim project: <a href="https://github.com/tunlezah/JJYSim">github.com/tunlezah/JJYSim</a>
+      · <a href="../web-ui-demo/">Web UI demo</a>
+      · <a href="../jjy-ticker/">BotanicFields' Qiita article in English</a>
+      · <a href="../">Tomokatsu Yukishita's build write-up (archived copy)</a></p>
+  </aside>
+
+  <article>
+    <h1>Generate Standard Radio Wave JJY with Ticker of M5StickC</h1>
+    <p class="title-ja">Transit NTP acquisition time short-distance transmission within weak distance.</p>
+    <div class="meta">
+      <span class="author"><a href="https://www.hackster.io/botanicfields">BotanicFields</a></span>
+      <span>Posted by <a href="https://www.hackster.io/vany5921">vany5921</a></span>
+      <span>Published July 28, 2020</span>
+      <span>© <a href="http://opensource.org/licenses/MIT">MIT</a></span>
+      <span>Intermediate</span>
+      <span>Full instructions provided</span>
+      <span>2 hours</span>
+    </div>
+    <figure class="diagram"><img src="../assets/hackster-ticker-cover.webp" width="900" height="675"
+      alt="An M5StickC with a loop of wire on clip leads in front of a SEIKO radio-controlled clock showing 8:14, 7/26"></figure>
+
+    <h2 id="things">Things used in this project</h2>
+    <p><strong>Hardware components</strong></p>
+    <ul>
+      <li><a href="https://www.hackster.io/m5stack/products/m5stickc-esp32-pico-mini-iot-development-board">M5Stack M5StickC ESP32-PICO Mini IoT Development Board</a> ×1</li>
+    </ul>
+
+    <h2 id="story">Story</h2>
+<h3 id="s-1-introduction">1. Introduction</h3>
+<p>The radio wave watch can calibrate the time by receiving the standard radio wave.It is also common to obtain the time through NTP or GPS equipment, and then send them according to the method of receiving standard radio waves to generate pseudo-standard radio waves.</p>
+<h3 id="s-2-approach">2. Approach</h3>
+<p>The standard radio wave specifications are in NICT7. I will generate the time code of normal time in that pseudo.</p>
+<p>("Time code for normal time (except 15 minutes and 45 minutes every hour) (example)" Source: NICT8)</p>
+<figure class="diagram"><img src="../assets/hackster-ticker-timecode.webp" width="740" height="480" alt="NICT diagram of the JJY time code for normal time, seconds 0 to 59, with Japanese and English labels" loading="lazy"></figure>
+
+<p>Time code emits one of the following pulse widths every second</p>
+<p>•0.2s ±5ms: Marker (M), Position marker (P0 to P5)</p>
+<p>•0.5s ±5ms: binary 1</p>
+<p>•0.8s ±5ms: binary 0</p>
+<p>The JJY signal control (turn on/off/do nothing) from the current date (year/month/day/weekday) or time (hour/minute/second) at every 0.1 second is unique. It will be decided. A timer interrupt can be used to acquire the timing of 0.1 seconds. If implemented in this way, processing can be completed only by interrupts, and execution in the background is also possible. Also, a pulse can be output even in the middle of the time code, making it easy to check the operation start.</p>
+<h3 id="s-3-timer-interrupt">3. Timer interrupt</h3>
+<p>Choose M5StickC as the device and Arduino IDE  as the development environment. Use Ticker  as a timer interrupt. It seems that the hardware timer interrupt   can also be used, but it is overspec for this application.</p>
+<h3 id="s-ticker">Ticker</h3>
+<p>The Ticker provided as a library of the Arduino IDE cannot be expected to have the accuracy of a hardware timer interrupt, but it can be used easily by following the sample program. This time, it is a process of 100 ms cycle, and the required accuracy is ±5 ms.</p>
+<h3 id="s-hardware-timer-interrupt">Hardware timer interrupt</h3>
+<p>The power of hardware timer interrupts in ESP32 is detailed.Even with a cycle of milliseconds or less, it can be processed with a small delay.</p>
+<h3 id="s-4-coding">4. Coding</h3>
+<p>4.1 Ticker definition</p>
+<p>The process of activating the function TCO_gen() that generates the JJY signal (TCO: Time Code Output) at 100 ms cycles can be coded as follows using the Ticker class.</p>
+<pre><code class="language-cpp">#include &lt;Ticker.h&gt;
+
+// for TCO(Time Code Output)
+const int TK_MS  = 100;   // Ticker period (ms)
+Ticker tk;
+
+void setup() {
+  M5.begin();
+
+  // start TCO
+  tk.attach_ms(TK_MS, TCO_gen);
+}</code></pre>
+<p>4.2 JJY signal generation</p>
+<p>TCO_gen(), which starts every 100ms, checks the current time (0.1 seconds) and calls the processing of the JJY signal at 0.0 seconds, 0.2 seconds, 0.5 seconds, and 0.8 seconds. The current time (0.1 seconds) is obtained as microseconds in the tv_usec member of the timeval structure. Also get datetime information with getlocaltime().</p>
+<pre><code class="language-cpp">struct timeval tv_now;
+
+// main task of TCO
+void TCO_gen() {
+  if(!getLocalTime(&amp;timeinfo)) {
+    Serial.println("[TCO]Failed to obtain time");
+    return;
+  }
+
+  gettimeofday(&amp;tv_now, NULL);
+  long tv_100ms = tv_now.tv_usec / 100000L;
+  switch(tv_100ms) {
+    case  0: TCO_000ms(); break;
+    case  2: TCO_200ms(); break;
+    case  5: TCO_500ms(); break;
+    case  8: TCO_800ms(); break;
+    default: break;
+  }
+}</code></pre>
+<p>The following is each processing for 0.0 seconds, 0.2 seconds, 0.5 seconds, and 0.8 seconds at the current time (0.1 seconds).</p>
+<p>At 0.0 seconds anyway turn on the JJY signal</p>
+<p>At 0.2 seconds, at the time (seconds) to send the marker, turn off the JJY signal.</p>
+<p>At 0.5 seconds, the JJY signal is turned off at the time (seconds) to send 1 from the current date and time.</p>
+<p>At 0.8 seconds, just turn off the JJY signal</p>
+<pre><code class="language-cpp">// for TCO(Time Code Output)
+const int MARKER = 0xff;  // MARKER code which TCO_val() returns 
+
+// TCO task at every 0ms
+void TCO_000ms() {
+  TC_on();
+}
+
+// TCO task at every 200ms
+void TCO_200ms() {
+  if(TC_val() == MARKER) {
+    TC_off();
+  }
+}
+
+// TCO task at every 500ms
+void TCO_500ms() {
+  if(TC_val() != 0) {
+    TC_off();
+  } 
+}
+
+// TCO task at every 800ms
+void TCO_800ms() {
+  TC_off();
+}</code></pre>
+<p>The contents of the function TC_val() that returns the signal (marker, 1, 0) to be sent at the current time (seconds) from the date and time. It is a simple structure with 60 case statements.</p>
+<pre><code class="language-cpp">// for TCO(Time Code Output)
+const int MARKER = 0xff;  // MARKER code which TCO_val() returns 
+
+// TCO value
+//   MARKER, 1:not zero, 0:zero
+int TC_val() {
+  int h = int3bcd(timeinfo.tm_hour);
+  int parity_h = parity8(h);
+  int m = int3bcd(timeinfo.tm_min);
+  int parity_m = parity8(m);
+  int year = timeinfo.tm_year + 1900;
+  int y = int3bcd(year);
+
+  const int MONTH[12] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+  int days = timeinfo.tm_mday;
+  for(int i = 0; i &lt; timeinfo.tm_mon; i++) {  // timeinfo.tm_mon starts from 0
+    days += MONTH[i];
+  }
+  if((timeinfo.tm_mon &gt; 1) &amp;&amp; ((year % 4 == 0) &amp;&amp; (year % 100 != 0)) || (year % 400 == 0)) {
+    days++;
+  }
+  int d = int3bcd(days);
+
+  int w = timeinfo.tm_wday;
+
+  int tc;
+  switch(timeinfo.tm_sec) {
+    case  0: tc = MARKER;     break;
+    case  1: tc = m &amp; 0x40;   break;
+    case  2: tc = m &amp; 0x20;   break;
+    case  3: tc = m &amp; 0x10;   break;
+    case  4: tc = 0;          break;
+    case  5: tc = m &amp; 0x08;   break;
+    case  6: tc = m &amp; 0x04;   break;
+    case  7: tc = m &amp; 0x02;   break;
+    case  8: tc = m &amp; 0x01;   break;
+    case  9: tc = MARKER;     break;
+
+    case 10: tc = 0;          break;
+    case 11: tc = 0;          break;
+    case 12: tc = h &amp; 0x20;   break;
+    case 13: tc = h &amp; 0x10;   break;
+    case 14: tc = 0;          break;
+    case 15: tc = h &amp; 0x08;   break;
+    case 16: tc = h &amp; 0x04;   break;
+    case 17: tc = h &amp; 0x02;   break;
+    case 18: tc = h &amp; 0x01;   break;
+    case 19: tc = MARKER;     break;
+
+    case 20: tc = 0;          break;
+    case 21: tc = 0;          break;
+    case 22: tc = d &amp; 0x200;  break;
+    case 23: tc = d &amp; 0x100;  break;
+    case 24: tc = 0;          break;
+    case 25: tc = d &amp; 0x080;  break;
+    case 26: tc = d &amp; 0x040;  break;
+    case 27: tc = d &amp; 0x020;  break;
+    case 28: tc = d &amp; 0x010;  break;
+    case 29: tc = MARKER;     break;
+
+    case 30: tc = d &amp; 0x008;  break;
+    case 31: tc = d &amp; 0x004;  break;
+    case 32: tc = d &amp; 0x002;  break;
+    case 33: tc = d &amp; 0x001;  break;
+    case 34: tc = 0;          break;
+    case 35: tc = 0;          break;
+    case 36: tc = parity_h;   break;
+    case 37: tc = parity_m;   break;
+    case 38: tc = 0;          break;
+    case 39: tc = MARKER;     break;
+
+    case 40: tc = 0;          break;
+    case 41: tc = y &amp; 0x80;   break;
+    case 42: tc = y &amp; 0x40;   break;
+    case 43: tc = y &amp; 0x20;   break;
+    case 44: tc = y &amp; 0x10;   break;
+    case 45: tc = y &amp; 0x08;   break;
+    case 46: tc = y &amp; 0x04;   break;
+    case 47: tc = y &amp; 0x02;   break;
+    case 48: tc = y &amp; 0x01;   break;
+    case 49: tc = MARKER;     break;
+
+    case 50: tc = w &amp; 0x04;   break;
+    case 51: tc = w &amp; 0x02;   break;
+    case 52: tc = w &amp; 0x01;   break;
+    case 53: tc = 0;          break;
+    case 54: tc = 0;          break;
+    case 55: tc = 0;          break;
+    case 56: tc = 0;          break;
+    case 57: tc = 0;          break;
+    case 58: tc = 0;          break;
+    case 59: tc = MARKER;     break;
+    default: tc = 0;          break;
+  }
+  return tc;
+}
+
+int int3bcd(int a) {
+  return (a % 10) + (a / 10 % 10 * 16) + (a / 100 % 10 * 256);
+}
+
+int parity8(int a) {
+  int pa = a;
+  for(int i = 1; i &lt; 8; i++) {
+    pa += a &gt;&gt; i;
+  }
+  return pa % 2;
+}</code></pre>
+<p>4.3 40kHz signal generation</p>
+<p>Use the LEDC library provided by Arduino IDE for ESP32. Turn the LEDC signal on and off by changing the duty setting. Frequent duty changes in PWM are expected. The signal is off with a duty of 0%. The built-in LED of M5StickC for monitor is turned on and off at the same time. LOW turns it on, and HIGH turns it off.</p>
+<pre><code class="language-cpp">// for LEDC(PWM)
+const uint8_t  LEDC_PIN      = 26;
+const uint8_t  LEDC_CH       = 0;
+const double   LEDC_FREQ     = 4e4;  // 40kHz
+const uint8_t  LEDC_RESO     = 10;   // 2^10 = 1024 
+const uint32_t LEDC_DUTY_ON  = 512;  // 50% 
+const uint32_t LEDC_DUTY_OFF = 0;    // 0 
+
+// for monitoring
+const int LED  = 10;      // LED to monitor
+bool led_enable = true;   // 
+
+void setup() {
+  M5.begin();
+
+  // start LEDC
+  ledcSetup(LEDC_CH, LEDC_FREQ, LEDC_RESO);
+  ledcAttachPin(LEDC_PIN, LEDC_CH);
+
+  // for monitoring
+  pinMode(LED, OUTPUT);
+}
+
+void TC_on() {
+  ledcWrite(LEDC_CH, LEDC_DUTY_ON);
+  if(led_enable) digitalWrite(LED, LOW);
+}
+
+void TC_off() {
+  ledcWrite(LEDC_CH, LEDC_DUTY_OFF);
+  digitalWrite(LED, HIGH);
+}</code></pre>
+<p>4.4 Other</p>
+<p><strong><em>Wifi settings</em></strong></p>
+<p>I am using WiFiManager. You need to install the following libraries with the Library Manager.</p>
+<p>•WiFiManager by tzapu, tablatronix</p>
+<p>There are many similar libraries, but the above is GitHub with many Stars outstanding. I'm curious about the alpha version. Please refer to the description of WiFiManager on GitHub for how to connect to Wifi.</p>
+<pre><code class="language-cpp">#include &lt;WiFi.h&gt;
+#include &lt;WiFiManager.h&gt; // https://github.com/tzapu/WiFiManager
+
+void setup() {
+  M5.begin();
+
+  // setup Wifi
+  WiFi.mode(WIFI_STA);
+  WiFiManager wm;
+  bool res = wm.autoConnect();  // auto generated AP name from chipid
+  // bool res = wm.autoConnect("AutoConnectAP"); // anonymous ap
+  // bool res = wm.autoConnect("AutoConnectAP","password"); // password protected ap
+
+  if(!res)
+    Serial.println("Failed to connect");
+  else
+    Serial.println("connected...yeey :)");
+}</code></pre>
+<h3 id="s-ntp">NTP设定</h3>
+<p>Normal NTP setting.</p>
+<pre><code class="language-cpp">// for NTP and time
+const long  GMTOFFSET = 3600 * 9;  // JST-9
+const int   DAYLIGHT  = 3600 * 0;  // No daylight time
+const char* NTPSERVER = "pool.ntp.org";
+struct tm timeinfo;
+
+void setup() {
+  M5.begin();
+
+  // start NTP
+  configTime(GMTOFFSET, DAYLIGHT, NTPSERVER);
+  while(!getLocalTime(&amp;timeinfo)) {
+    Serial.println("Failed to obtain time");
+    delay(100);
+  }
+  Serial.println(&amp;timeinfo, "%A %B %d %Y %H:%M:%S");  
+}</code></pre>
+<h3 id="s-5-ticker-cycle-variation">5. Ticker cycle variation</h3>
+<p>For each Ticker interrupt, I tried to aggregate the variation in the elapsed time since the last interrupt. The median value is 0 when the elapsed time is 100 ms.</p>
+<h3 id="s-range-number-of-times">Range number of times</h3>
+<p>～ -50ms                      5</p>
+<ul>
+  <li>50ms ～ -5ms             4</li>
+  <li>5ms ～ -0.5ms            8042</li>
+  <li>0.5ms ～ -0.05ms      8825</li>
+  <li>0.05ms ～ 0.05ms     910959</li>
+</ul>
+<p>0.05ms ～ 0.5ms        9050</p>
+<p>0.5ms ～ 5ms              7766</p>
+<p>5ms ～ 50ms              9</p>
+<p>50ms ～                      6</p>
+<p>•Average: 0.0985ms</p>
+<p>•Standard deviation: 380.6480ms</p>
+<p>Ticker cycle deviation is outside the range of ±5ms 24 times in 26 hours. The average value is not 0 due to extremely bad effects. We anticipate that the ticker cycle is disturbed due to competition with system processing including NTP and Wifi. However, it is 99.997% within the specified range (±5ms), and it seems that there is no problem in practice because the radio clock will also retry. From the standard deviation ±6σ = ±2283.888 = ±2.3ms is also within ±5ms, which seems to be a quality with no problem as an industry standard.</p>
+<h3 id="s-6-hardware">6. Hardware</h3>
+<p>The 40kHz pseudo JJY signal is output from GPIO26 of M5StickC. Connect between GPIO26 and GND by inserting a 1k ohm resistor on the way with a wire. The pseudo JJY signal current flows with a strength of about 3mA. When you lay a wire near the radio-controlled watch, the radio-controlled watch receives the magnetic field generated around the wire. We uploaded  videos of how to set the time.</p>
+<p><a href="https://www.youtube.com/watch?v=S_t3g5wqyh8&amp;feature=youtu.be">youtube - JJY Simulator by M5StickC for a radio controlled clock </a></p>
+<figure class="diagram"><img src="../assets/hackster-ticker-clock-loop.webp" width="740" height="416" alt="The M5StickC with the wire loop on clip leads in front of the radio-controlled clock" loading="lazy"></figure>
+
+<figure class="diagram"><img src="../assets/hackster-ticker-closeup.webp" width="740" height="555" alt="Close-up of the M5StickC&#x27;s GND and G26 pins with leads to the clip leads; a resistor sits in one lead" loading="lazy"></figure>
+
+<h3 id="s-6-1-waveform-improvement">6.1 Waveform improvement</h3>
+<p>The 40kHz signal output by GPIO is a square wave and contains a large amount of unnecessary frequency components. For constant use, I would like to make it closer to a sine wave. A low pass filter removes high frequency components. The resistance and capacitor values of the low-pass filter were determined by looking at the waveform on the oscilloscope. Even if the cutoff frequency was around 40kHz, the waveform did not become round enough. It has a 2-stage configuration with a cutoff frequency of about 16 kHz, which is assumed to be amplified later.</p>
+<figure class="diagram"><img src="../assets/hackster-ticker-schematic.png" width="740" height="523" alt="Schematic of the BF-018 board for the M5StickC: two-stage RC low-pass filter, MCP6022 amplifier and loop antenna" loading="lazy"></figure>
+
+<h3 id="s-alternative-hardware-configuration">Alternative hardware configuration</h3>
+<p>Instead of outputting the JJY signal directly from GPIO, the same level signal as the monitor LED may be output from GPIO, and an external analog switch may be controlled to turn on/off the 40kHz signal. The 40kHz source can be constantly output from another GPIO for waveform shaping, or an external good quality oscillator can be used. The analog switch can be used to directly turn on/off the 40kHz signal or to control the gain of the amplifier.</p>
+<h3 id="s-6-2-printed-board">6.2 Printed board</h3>
+<p>We have manufactured a printed circuit board that houses the above circuits and has the antenna loop pattern built into the board.We used KiCad  for the design and the public Python tools  for the loop pattern</p>
+<p><a href="https://github.com/jedrzejboczar/kicad-coil-generator">https://github.com/jedrzejboczar/kicad-coil-generator</a></p>
+
+    <h2 id="schematics">Schematics</h2>
+    <p><strong>BF-018_SCM</strong>: <a href="bf-018_scm.pdf">bf-018_scm.pdf</a> (copy kept here) ·
+      <a href="https://hacksterio.s3.amazonaws.com/uploads/attachments/1165939/bf-018_scm_9nCV8R7RA0.pdf">original attachment on Hackster.io</a></p>
+
+    <h2 id="code">Code</h2>
+    <p><strong>JJY Simulator for M5StickC</strong> · C/C++</p>
+<pre><code class="language-cpp">// copyright 2020 BotanicFields, Inc.
+// BF-018 
+// JJY Simulator for M5StickC
+//
+#include &lt;M5StickC.h&gt;
+#include &lt;Ticker.h&gt;
+#include &lt;WiFi.h&gt;
+#include &lt;WiFiManager.h&gt; // https://github.com/tzapu/WiFiManager
+
+// for NTP and time
+const long  GMTOFFSET = 3600 * 9;  // JST-9
+const int   DAYLIGHT  = 3600 * 0;  // No daylight time
+const char* NTPSERVER = "pool.ntp.org";
+struct tm timeinfo;
+struct timeval tv_now;
+
+// for LEDC(PWM)
+const uint8_t  LEDC_PIN      = 26;
+const uint8_t  LEDC_CH       = 0;
+const double   LEDC_FREQ     = 4e4;  // 40kHz
+const uint8_t  LEDC_RESO     = 10;   // 2^10 = 1024 
+const uint32_t LEDC_DUTY_ON  = 512;  // 50% 
+const uint32_t LEDC_DUTY_OFF = 0;    // 0 
+
+// for monitoring
+const int LED  = 10;      // LED to monitor
+bool led_enable = true;   // 
+
+// for TCO(Time Code Output)
+const int TK_MS  = 100;   // Ticker period (ms)
+const int MARKER = 0xff;  // MARKER code which TCO_val() returns 
+long last_us;             // for statistics of Ticker
+Ticker tk;
+
+// main task of TCO
+void TCO_gen() {
+  if(!getLocalTime(&amp;timeinfo)) {
+    Serial.println("[TCO]Failed to obtain time");
+    return;
+  }
+
+  gettimeofday(&amp;tv_now, NULL);
+  long tv_100ms = tv_now.tv_usec / 100000L;
+  switch(tv_100ms) {
+    case  0: TCO_000ms(); break;
+    case  2: TCO_200ms(); break;
+    case  5: TCO_500ms(); break;
+    case  8: TCO_800ms(); break;
+    default: break;
+  }
+
+  // statistics of tv_usec
+  long now_us = tv_now.tv_usec;
+  if(now_us &lt; 100000L) now_us += 1000000L;
+  long diff_us = now_us - last_us - 100000L;
+  last_us = tv_now.tv_usec;
+
+  static long diff_num = 0L;
+  static long diff_max = 0L;
+  static long diff_min = 0L;
+  static double diff_sum = 0.0;
+  static double diff_sum_sq = 0.0;
+  diff_num++;
+  if(diff_max &lt; diff_us) diff_max = diff_us;
+  if(diff_min &gt; diff_us) diff_min = diff_us;
+  diff_sum += (double)diff_us;
+  diff_sum_sq += (double)diff_us * (double)diff_us;  
+
+  static long dist[9] = {0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L};
+  if(     diff_us &lt; -50000) dist[0]++;  // &lt; -50000us(&lt; -50ms)
+  else if(diff_us &lt;  -5000) dist[1]++;  //  &lt; -5000us(&lt;  -5ms)
+  else if(diff_us &lt;   -500) dist[2]++;  //   &lt; -500us
+  else if(diff_us &lt;    -50) dist[3]++;  //    &lt; -50us
+  else if(diff_us &lt;     50) dist[4]++;  //   -50~50us    
+  else if(diff_us &lt;    500) dist[5]++;  //    &gt;  50us
+  else if(diff_us &lt;   5000) dist[6]++;  //   &gt;  500us
+  else if(diff_us &lt;  50000) dist[7]++;  //  &gt;  5000us(&gt;   5ms)
+  else                      dist[8]++;  // &gt;  50000us(&gt;  50ms)
+
+  if((timeinfo.tm_sec == 0) &amp;&amp; (tv_now.tv_usec &lt; 100000)) {
+    for(int i = 0; i &lt; 9; i++) {
+      Serial.printf("%d ", dist[i]);
+    }
+    Serial.println();
+
+    double diff_ave = diff_sum / (double)diff_num;
+    double diff_var = (diff_sum_sq - diff_sum * diff_sum / (double)diff_num) / (double)diff_num;
+    double diff_sdv = sqrt(diff_var);
+    Serial.printf("n= %d, ave= %.4f  sdv= %.4f  min= %d  max= %d\n", diff_num, diff_ave, diff_sdv, diff_min, diff_max);
+  }
+}
+
+// TCO task at every 0ms
+void TCO_000ms() {
+  TC_on();
+
+  if(timeinfo.tm_sec == 0) {
+    Serial.println();
+    Serial.println(&amp;timeinfo, "%A %B %d %Y %H:%M:%S  ");  
+  }
+}
+
+// TCO task at every 200ms
+void TCO_200ms() {
+  if(TC_val() == MARKER) {
+    TC_off();
+
+    Serial.print(" ");
+    Serial.print(timeinfo.tm_sec);     
+    Serial.print(" ");
+  }
+}
+
+// TCO task at every 500ms
+void TCO_500ms() {
+  if(TC_val() != 0) {
+    TC_off();
+
+    if(TC_val() != MARKER) {
+      Serial.print("1");
+    }
+  } 
+}
+
+// TCO task at every 800ms
+void TCO_800ms() {
+  TC_off();
+
+  if(TC_val() == 0) {
+    Serial.print("0");
+  }
+}
+
+void TC_on() {
+  ledcWrite(LEDC_CH, LEDC_DUTY_ON);
+  if(led_enable) digitalWrite(LED, LOW);
+}
+
+void TC_off() {
+  ledcWrite(LEDC_CH, LEDC_DUTY_OFF);
+  digitalWrite(LED, HIGH);
+}
+
+// TCO value
+//   MARKER, 1:not zero, 0:zero
+int TC_val() {
+  int h = int3bcd(timeinfo.tm_hour);
+  int parity_h = parity8(h);
+  int m = int3bcd(timeinfo.tm_min);
+  int parity_m = parity8(m);
+  int year = timeinfo.tm_year + 1900;
+  int y = int3bcd(year);
+
+  const int MONTH[12] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+  int days = timeinfo.tm_mday;
+  for(int i = 0; i &lt; timeinfo.tm_mon; i++) {  // timeinfo.tm_mon starts from 0
+    days += MONTH[i];
+  }
+  if((timeinfo.tm_mon &gt; 1) &amp;&amp; ((year % 4 == 0) &amp;&amp; (year % 100 != 0)) || (year % 400 == 0)) {
+    days++;
+  }
+  int d = int3bcd(days);
+
+  int w = timeinfo.tm_wday;
+
+  int tc;
+  switch(timeinfo.tm_sec) {
+    case  0: tc = MARKER;     break;
+    case  1: tc = m &amp; 0x40;   break;
+    case  2: tc = m &amp; 0x20;   break;
+    case  3: tc = m &amp; 0x10;   break;
+    case  4: tc = 0;          break;
+    case  5: tc = m &amp; 0x08;   break;
+    case  6: tc = m &amp; 0x04;   break;
+    case  7: tc = m &amp; 0x02;   break;
+    case  8: tc = m &amp; 0x01;   break;
+    case  9: tc = MARKER;     break;
+
+    case 10: tc = 0;          break;
+    case 11: tc = 0;          break;
+    case 12: tc = h &amp; 0x20;   break;
+    case 13: tc = h &amp; 0x10;   break;
+    case 14: tc = 0;          break;
+    case 15: tc = h &amp; 0x08;   break;
+    case 16: tc = h &amp; 0x04;   break;
+    case 17: tc = h &amp; 0x02;   break;
+    case 18: tc = h &amp; 0x01;   break;
+    case 19: tc = MARKER;     break;
+  
+    case 20: tc = 0;          break;
+    case 21: tc = 0;          break;
+    case 22: tc = d &amp; 0x200;  break;
+    case 23: tc = d &amp; 0x100;  break;
+    case 24: tc = 0;          break;
+    case 25: tc = d &amp; 0x080;  break;
+    case 26: tc = d &amp; 0x040;  break;
+    case 27: tc = d &amp; 0x020;  break;
+    case 28: tc = d &amp; 0x010;  break;
+    case 29: tc = MARKER;     break;
+
+    case 30: tc = d &amp; 0x008;  break;
+    case 31: tc = d &amp; 0x004;  break;
+    case 32: tc = d &amp; 0x002;  break;
+    case 33: tc = d &amp; 0x001;  break;
+    case 34: tc = 0;          break;
+    case 35: tc = 0;          break;
+    case 36: tc = parity_h;   break;
+    case 37: tc = parity_m;   break;
+    case 38: tc = 0;          break;
+    case 39: tc = MARKER;     break;
+
+    case 40: tc = 0;          break;
+    case 41: tc = y &amp; 0x80;   break;
+    case 42: tc = y &amp; 0x40;   break;
+    case 43: tc = y &amp; 0x20;   break;
+    case 44: tc = y &amp; 0x10;   break;
+    case 45: tc = y &amp; 0x08;   break;
+    case 46: tc = y &amp; 0x04;   break;
+    case 47: tc = y &amp; 0x02;   break;
+    case 48: tc = y &amp; 0x01;   break;
+    case 49: tc = MARKER;     break;
+  
+    case 50: tc = w &amp; 0x04;   break;
+    case 51: tc = w &amp; 0x02;   break;
+    case 52: tc = w &amp; 0x01;   break;
+    case 53: tc = 0;          break;
+    case 54: tc = 0;          break;
+    case 55: tc = 0;          break;
+    case 56: tc = 0;          break;
+    case 57: tc = 0;          break;
+    case 58: tc = 0;          break;
+    case 59: tc = MARKER;     break;
+    default: tc = 0;          break;
+  }
+  return tc;
+}
+
+int int3bcd(int a) {
+  return (a % 10) + (a / 10 % 10 * 16) + (a / 100 % 10 * 256);
+}
+
+int parity8(int a) {
+  int pa = a;
+  for(int i = 1; i &lt; 8; i++) {
+    pa += a &gt;&gt; i;
+  }
+  return pa % 2;
+}
+
+// LCD display
+const int UPDATE_INTERVAL =  100;                    // delay in ms 
+const int SHOW_DULATION   = 5000 / UPDATE_INTERVAL;  // dulation in ms / INTERVAL
+int showRemain = 0;
+
+void showSetup() {
+  M5.Lcd.setRotation(1);
+  M5.Lcd.fillScreen(BLACK);
+  M5.Axp.ScreenBreath(7);
+}
+
+void showStatus(bool show_yes) {
+  if(show_yes) {
+    M5.Axp.ScreenBreath(10);
+    M5.Lcd.setTextSize(1);
+    M5.Lcd.setCursor(0, 0, 2);
+    M5.Lcd.setTextColor(WHITE, DARKGREEN);
+    M5.Lcd.println("    BotanicFields, Inc.   ");
+  
+    M5.Lcd.setTextColor(WHITE, BLACK);
+    M5.Lcd.println(WiFi.SSID());
+    M5.Lcd.println(WiFi.localIP().toString());
+
+    if(!getLocalTime(&amp;timeinfo)) {
+      M5.Lcd.println("Failed to obtain time");
+    } 
+    else {
+      M5.Lcd.println(&amp;timeinfo, "%B %d %Y");  
+      M5.Lcd.println(&amp;timeinfo, "%A %H:%M:%S");
+    } 
+    M5.Lcd.setCursor(120, 32, 2);
+    if(led_enable) {
+      M5.Lcd.println("L-on ");  
+    }
+    else {
+      M5.Lcd.println("L-off");  
+    }
+  } 
+  else {
+    M5.Lcd.fillScreen(BLACK);
+    M5.Axp.ScreenBreath(7);
+  }
+}
+
+// for RTC .. not used actually
+void RTCset() {
+  RTC_TimeTypeDef TimeStruct;
+  TimeStruct.Hours   = timeinfo.tm_hour;
+  TimeStruct.Minutes = timeinfo.tm_min;
+  TimeStruct.Seconds = timeinfo.tm_sec;
+  M5.Rtc.SetTime(&amp;TimeStruct);
+  RTC_DateTypeDef DateStruct;
+  DateStruct.WeekDay = timeinfo.tm_wday;
+  DateStruct.Month   = timeinfo.tm_mon + 1;
+  DateStruct.Date    = timeinfo.tm_mday;
+  DateStruct.Year    = timeinfo.tm_year + 1900;
+  M5.Rtc.SetData(&amp;DateStruct);
+}
+
+void setup() {
+  M5.begin();
+
+  // setup Wifi
+  WiFi.mode(WIFI_STA);
+  WiFiManager wm;
+  bool res = wm.autoConnect();  // auto generated AP name from chipid
+  // bool res = wm.autoConnect("AutoConnectAP"); // anonymous ap
+  // bool res = wm.autoConnect("AutoConnectAP","password"); // password protected ap
+
+  if(!res)
+    Serial.println("Failed to connect");
+  else
+    Serial.println("connected...yeey :)");
+
+  // start NTP
+  configTime(GMTOFFSET, DAYLIGHT, NTPSERVER);
+  while(!getLocalTime(&amp;timeinfo)) {
+    Serial.println("Failed to obtain time");
+    delay(100);
+  }
+  Serial.println(&amp;timeinfo, "%A %B %d %Y %H:%M:%S");  
+  RTCset();  // The RTC is not used anyway.
+
+  // start LEDC
+  ledcSetup(LEDC_CH, LEDC_FREQ, LEDC_RESO);
+  ledcAttachPin(LEDC_PIN, LEDC_CH);
+
+  // for monitoring
+  pinMode(LED, OUTPUT);
+ 
+  // wait until middle of 100ms timing. ex. 50ms, 150ms, 250ms,..
+  gettimeofday(&amp;tv_now, NULL);
+  delayMicroseconds(150000L - tv_now.tv_usec % 100000L);
+
+  // for statistics of first sample
+  gettimeofday(&amp;tv_now, NULL);
+  last_us = tv_now.tv_usec;
+
+  // start TCO
+  tk.attach_ms(TK_MS, TCO_gen);
+
+  // for main loop
+  showSetup();
+}  
+
+void loop() {
+  M5.update();
+
+  // button-A: LCD-on for a while
+  if(M5.BtnA.wasReleased()) {
+    showStatus(true);
+    showRemain = SHOW_DULATION;
+  } 
+  else if(showRemain != 0) {
+    showStatus(true);
+    showRemain--;
+  } 
+  else {
+    showStatus(false);  
+  }
+
+  // button-B: LED monitor on/off
+  if(M5.BtnB.wasReleased()) {
+    led_enable = !led_enable;
+  } 
+
+  // loop delay
+  delay(UPDATE_INTERVAL);
+}
+
+/* 
+The MIT License
+SPDX short identifier: MIT
+Copyright 2019 BotanicFields, Inc.
+Permission is hereby granted, free of charge, to any person obtaining a copy 
+of this software and associated documentation files (the "Software"), to deal 
+in the Software without restriction, including without limitation the rights 
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell 
+copies of the Software, and to permit persons to whom the Software is 
+furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all 
+copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, 
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE 
+SOFTWARE.
+*/
+</code></pre>
+
+    <h2 id="credits">Credits</h2>
+    <ul>
+      <li><a href="https://www.hackster.io/botanicfields">BotanicFields</a></li>
+      <li>Posted by <a href="https://www.hackster.io/vany5921">vany5921</a></li>
+    </ul>
+  </article>
+</main>
+
+<footer class="site-footer">
+  <div class="inner">
+    <p>Original project © BotanicFields, published on Hackster.io under the MIT licence:
+      <a href="https://www.hackster.io/botanicfields/generate-standard-radio-wave-jjy-with-ticker-of-m5stickc-0330e0">https://www.hackster.io/botanicfields/generate-standard-radio-wave-jjy-with-ticker-of-m5stickc-0330e0</a>.
+      This page is an archived copy with full attribution; the text, code, schematic and photos are the author's, and the time-code diagram is
+      NICT's, as credited in the project.</p>
+    <p>Kept by the JJYSim project: <a href="https://github.com/tunlezah/JJYSim">github.com/tunlezah/JJYSim</a>
+      · <a href="../jjy-ticker/">BotanicFields' Qiita article in English</a>
+      · <a href="../">Tomokatsu Yukishita's build write-up (archived copy)</a>.</p>
+    <p>If you are the author and would like this copy changed or taken down,
+      please <a href="https://github.com/tunlezah/JJYSim/issues">open an issue</a> and it will be done.</p>
+  </div>
+</footer>
+
+</body>
+</html>

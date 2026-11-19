@@ -2,6 +2,8 @@
 ## A JJY radio time signal simulator that runs on the ATOMS3 Lite and ATOM Lite/Matrix
 Note: the standard ATOMS3 (the non-Lite model) is not supported.
 
+### 2026-11-19 update
+- Added an archived copy of BotanicFields' Hackster.io project [Generate Standard Radio Wave JJY with Ticker of M5StickC](https://www.hackster.io/botanicfields/generate-standard-radio-wave-jjy-with-ticker-of-m5stickc-0330e0), the author's own English version of the Qiita article: https://tunlezah.github.io/JJYSim/hackster-ticker/ ([docs/hackster-ticker/index.html](./docs/hackster-ticker/index.html)), with the BF-018 schematic it links to. It is kept only so the information stays available; all credit belongs to BotanicFields, and the page links to the original.
 ### 2026-11-16 update
 - Added an English translation of BotanicFields' Qiita article [Generating a simulated JJY time signal with Ticker on the M5StickC / M5Atom](https://qiita.com/BotanicFields/items/a78c80f947388caf0d36), which explains how this firmware makes the signal: https://tunlezah.github.io/JJYSim/jjy-ticker/ ([docs/jjy-ticker/index.html](./docs/jjy-ticker/index.html)).
 - Rev.5: new "Carrier fine-tuning" setting on the web UI. At the default 8-bit LEDC resolution the 60 kHz carrier is really 60,015 Hz; 2-bit gives 60,000.2 Hz and 1-bit 59,999.9 Hz. Try it if a clock won't sync at 60 kHz. 40 kHz is exact at every setting. Rev.3/Rev.4: `ledc_resolution` can now be changed by hand; the 50% duty follows from it. See 8(4).
@@ -125,7 +127,7 @@ Confirmed working with:
 ## 1. Overview
 This project uses an M5Atom to generate a simulated JJY signal for radio-controlled clocks, so you can set the time on clocks that are out of range of the real JJY broadcast. It gets the time via NTP over Wi-Fi and outputs the JJY signal on a GPIO pin.
 
-Reference (Qiita, in Japanese): [Generating a simulated JJY time signal with Ticker on the M5StickC / M5Atom](https://qiita.com/BotanicFields/items/a78c80f947388caf0d36). An unofficial English translation is at https://tunlezah.github.io/JJYSim/jjy-ticker/ ([docs/jjy-ticker/index.html](./docs/jjy-ticker/index.html)).
+Reference (Qiita, in Japanese): [Generating a simulated JJY time signal with Ticker on the M5StickC / M5Atom](https://qiita.com/BotanicFields/items/a78c80f947388caf0d36). An unofficial English translation is at https://tunlezah.github.io/JJYSim/jjy-ticker/ ([docs/jjy-ticker/index.html](./docs/jjy-ticker/index.html)). The author also posted an English version on Hackster.io, [Generate Standard Radio Wave JJY with Ticker of M5StickC](https://www.hackster.io/botanicfields/generate-standard-radio-wave-jjy-with-ticker-of-m5stickc-0330e0); an archived copy is at https://tunlezah.github.io/JJYSim/hackster-ticker/ ([docs/hackster-ticker/index.html](./docs/hackster-ticker/index.html)).
 
 Build write-up by Tomokatsu Yukishita: [DIY JJY Simulator with M5StickC: Syncing My Radio-Controlled Clock](https://yre.jp/en/post/jjy/) ([日本語](https://yre.jp/post/jjy/)). An archived copy is kept at https://tunlezah.github.io/JJYSim/ ([docs/index.html](./docs/index.html)).
 
