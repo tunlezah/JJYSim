@@ -2,6 +2,8 @@
 ## A JJY radio time signal simulator that runs on the ATOMS3 Lite and ATOM Lite/Matrix
 Note: the standard ATOMS3 (the non-Lite model) is not supported.
 
+### 2026-11-20 update
+- Rev.5: two power-saving settings on the web UI, for running from a battery: **Wi-Fi sleep** (the receiver wakes only for the access point's beacons) and **CPU at 80 MHz** (instead of 240 MHz). They are off by default and can be set separately. Estimated battery life is about 2.5 times longer with Wi-Fi sleep, and about 3.5 times with both. The carrier frequency and the signal timing don't change at 80 MHz. See 10(4) for the estimates and the known risks. These settings have been tested in the web UI demo, not yet on hardware, and the power figures are estimates, not measurements.
 ### 2026-11-19 update
 - Added an archived copy of BotanicFields' Hackster.io project [Generate Standard Radio Wave JJY with Ticker of M5StickC](https://www.hackster.io/botanicfields/generate-standard-radio-wave-jjy-with-ticker-of-m5stickc-0330e0), the author's own English version of the Qiita article: https://tunlezah.github.io/JJYSim/hackster-ticker/ ([docs/hackster-ticker/index.html](./docs/hackster-ticker/index.html)), with the BF-018 schematic it links to. It is kept only so the information stays available; all credit belongs to BotanicFields, and the page links to the original.
 ### 2026-11-16 update
@@ -301,8 +303,9 @@ Settings you can change on the page (stored in flash, and applied when the devic
 - carrier fine-tuning: the LEDC resolution, 8-bit (default), 2-bit or 1-bit. At 60 kHz, fewer bits bring the carrier closer to exactly 60 kHz (see 8(4)); the page shows the frequency each choice gives
 - time zone, as a POSIX TZ string such as `JST-9` or `CET-1CEST,M3.5.0,M10.5.0/3` (a name like `Asia/Tokyo` is not accepted). A JJY clock displays whatever local time it receives, so outside Japan you can choose your own time zone. Watches with a home-city setting, for example Citizen multi-band models, choose the station by the home city: only a city that uses the Japan station (Tokyo; on some models also Adelaide, Sydney, Nouméa and Auckland) makes the watch listen for JJY at all, and the watch then treats the received time as Japan time and converts it to the home city's offset. With a European, American or Chinese home city the watch listens for a different station and will never sync to this simulator. The simplest setup is the home city on Tokyo and your own time zone here. The JJY code carries no summer-time flag, so a time zone with daylight saving rules already includes the hour shift: set the watch's own summer time to OFF so the hour is not added again.
 - NTP server
+- power saving: Wi-Fi sleep, and CPU at 80 MHz, set separately (see 10(4)). The Wi-Fi card shows whether Wi-Fi sleep is on, and the Device card shows the CPU clock the device is running at.
 
-The defaults are in `settings` at the top of `BF-018ARev5.ino`.
+The defaults are in `settings` at the top of `BF-018ARev5.ino`. Without a password the page is read-only, so to use the power-saving settings without one, set `wifi_sleep` and `cpu_mhz` there before uploading.
 
 To try the page without a device, open the [web UI demo](https://tunlezah.github.io/JJYSim/web-ui-demo/). It is the same page with `docs/web-ui-demo/emulator.js` standing in for the device, so the time code, serial log and buttons work, but nothing is saved. After changing `BF_WebUiPage.h`, run `python3 tools/make_web_ui_demo.py` to update the demo.
 
@@ -366,7 +369,7 @@ How strong the field must be depends on the clock and on what else is on the air
 The field stays small. At 3 m in line, the model gives about 35 dB(µV/m) at 40 kHz and 30 dB(µV/m) at 60 kHz. Japan's rule for licence-free very weak emitters (微弱無線局) allows up to 500 µV/m, 54 dB(µV/m), at 3 m below 322 MHz. This compares an equivalent near-field figure with a rule meant for measured field strength, so it is a rough check, not a compliance test. Other countries have their own rules.
 
 ### (4) Battery life
-The simulator draws its power from USB at 5 V, and almost all of it goes to Wi-Fi. The firmware keeps the ESP32's Wi-Fi receiver on all the time: `WiFi.setSleep(false)` in `setup()`, which keeps the button responsive. In that mode the ESP32 datasheet gives 113 mA at 3.3 V for the receiver with the CPU idle, and a measured ESP32 board drew 145 mA.
+The simulator draws its power from USB at 5 V, and almost all of it goes to Wi-Fi. By default the firmware keeps the ESP32's Wi-Fi receiver on all the time: `WiFi.setSleep(false)` in `setup()`, which keeps the button responsive (the power-saving settings below change this). In that mode the ESP32 datasheet gives 113 mA at 3.3 V for the receiver with the CPU idle, and a measured ESP32 board drew 145 mA.
 
 | Part | Current at 5 V |
 |:--|:-:|
@@ -390,4 +393,29 @@ Running time from a USB power bank. The rating is taken at the 3.7 V cells, with
 
 - Many power banks switch themselves off when the load stays below about 50 to 100 mA. At about 100 mA, an ATOMS3 Lite is near that limit; if the bank switches off after a while, use one with an always-on or low-current mode.
 - A clock only needs the signal for its few minutes of reception, usually at night. With a timer switch that powers the simulator for half an hour around that time (it needs a minute or so to join Wi-Fi and get the time first), a 10,000 mAh power bank would last about three months.
-- Letting Wi-Fi sleep between beacons (`WiFi.setSleep(true)`) would bring the ESP32 down to roughly 30 to 70 mA at 3.3 V (the datasheet's modem-sleep figures) and roughly double the running time. The time code doesn't need Wi-Fi between NTP syncs, but the firmware keeps Wi-Fi awake because the button can misbehave on M5Stack boards while it sleeps (see the link next to `WiFi.setSleep(false)` in `setup()`), and the web UI answers more slowly. This has not been tried.
+
+#### Power-saving settings (Rev.5)
+Two settings on the web UI, under "Power saving", cut the current for running from a battery. They are off by default, can be set separately, and take effect when the device restarts after saving.
+
+- **Wi-Fi sleep** (`wifi_sleep`): the Wi-Fi receiver wakes only for the access point's beacons (modem sleep, `WiFi.setSleep(true)`), instead of listening all the time. The device stays connected, so the web UI and `jjy-sim.local` keep working, but each reply can wait up to one beacon interval (about 0.1 s). The time code doesn't use Wi-Fi between NTP syncs.
+- **CPU at 80 MHz** (`cpu_mhz`): instead of 240 MHz. The peripheral clock stays at 80 MHz, so the carrier frequency (40 kHz exact, 60 kHz as in 8(4)), the Ticker that times the pulses, the serial baud rate and the LED run exactly as at 240 MHz. On its own it saves little, because the Wi-Fi receiver dominates; with Wi-Fi sleep it is worth a further 10 to 15 mA. 80 MHz is the lowest setting: below it Wi-Fi stops and the carrier's clock would change. The CPU clock is set at the very start of `setup()`, before anything else runs, because on the ATOM Lite/Matrix the change restarts the ESP32's PLL.
+
+Estimates from [tools/antenna_model.py](./tools/antenna_model.py), not measured. The Wi-Fi sleep figures depend on how much broadcast traffic the network carries.
+
+| Settings | ATOM Lite: current at 5 V | ATOM Lite: 10,000 mAh | ATOMS3 Lite: current at 5 V | ATOMS3 Lite: 10,000 mAh |
+|:--|:-:|:-:|:-:|:-:|
+| Both off (default) | 121 to 156 mA | about 2 days | 87 to 113 mA | about 2.5 to 3 days |
+| Wi-Fi sleep | 46 to 73 mA | about 3.5 to 6 days (×2.4) | 31 to 51 mA | about 5 to 8.5 days (×2.6) |
+| Wi-Fi sleep and CPU at 80 MHz | 33 to 59 mA | about 4.5 to 8 days (×3.3) | 21 to 41 mA | about 6.5 to 12.5 days (×3.6) |
+
+Known risks, none of them tried on hardware yet:
+- **Power banks that switch off.** With the power-saving settings the current is near or below the 50 to 100 mA at which many power banks turn themselves off (see above). Check that yours stays on.
+- **The button on the ATOM Lite/Matrix.** With Wi-Fi sleep, its button (GPIO39) can register presses nobody made (ESP32 erratum 3.11; see the link next to `WiFi.setSleep()` in `setup()`), which switches the LED monitor on or off. M5Unified has a countermeasure for this, but whether it works on every board package has not been checked. The ATOMS3 Lite (GPIO41) is not affected.
+- **Wi-Fi dropouts.** Some access points handle sleeping clients badly. A dropout that lasts about 4 minutes restarts the device (see 8(1)), and without an RTC the time code stops until NTP answers again. If a clock stops syncing, turn Wi-Fi sleep off first.
+- **NTP replies held back.** An NTP reply that arrives while the receiver sleeps may wait for the next beacon, which could leave the transmitted time up to about 0.1 s late after a sync. Whether this happens has not been checked: compare a synced clock with a reference, with Wi-Fi sleep on and off.
+- **The LED at 80 MHz.** The LED's timing comes from the unchanged 80 MHz peripheral clock, but the driver's interrupts respond more slowly at 80 MHz, so an occasional wrong colour is possible, most likely on the ATOM Matrix with its 25 LEDs. This is cosmetic.
+- **A slower web UI**, and less accurate seconds on the page's clock, because each request can wait for a beacon. An open page also asks for the status every second, which keeps the receiver busier: close it when you don't need it.
+
+To check the settings on a real device: a USB power meter shows the current, the Wi-Fi and Device cards on the page show that the settings took effect, "Signal timing" on the page shows whether the pulses still start on time, and a clock that syncs confirms the signal.
+
+- Without a timer switch, the simulator transmits all the time, and Wi-Fi sleep and the CPU clock can only cut the current down to what the CPU needs to keep the carrier running. For weeks or months on one battery, use the timer switch above.

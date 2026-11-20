@@ -10,6 +10,8 @@ struct WebUiSettings {
   char     time_zone[64];   // POSIX TZ string, e.g. "JST-9"
   char     ntp_server[64];  // host name or IPv4 address
   uint8_t  carrier_resolution;  // LEDC duty resolution in bits: 8, 2 or 1; fewer bits, a 60kHz carrier closer to 60kHz
+  bool     wifi_sleep;      // power saving: Wi-Fi modem sleep between the access point's beacons; false: receiver always on
+  uint8_t  cpu_mhz;         // power saving: CPU clock, 240 or 80 (MHz)
 };
 
 void WebUiLoadSettings(WebUiSettings *settings);  // keeps the given values for anything not stored

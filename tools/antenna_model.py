@@ -161,6 +161,17 @@ def distance_for(i_peak, threshold_db, factor=2.0):
 # table 19), plus the CPU, the 10 ms Ticker, the web server and occasional transmits. A DevKit measured 145 mA in
 # this mode (mischianti.org), which includes a USB bridge and LDO. ESP32-S3 is taken as about the same.
 ESP_MA = {"low": 110, "mid": 125, "high": 145}
+# The two power-saving settings of the web UI (estimates, not measured on this board):
+# - Wi-Fi sleep (modem sleep, DTIM1): the ESP32 datasheet gives 30-68 mA at 240 MHz with the radio off, and Espressif's
+#   low-power Wi-Fi guide measured modem sleep at 160 MHz, DTIM1, in a shielded box, as 31.1 mA (ESP32) and 40.1 mA
+#   (ESP32-S3). A real network's broadcast traffic wakes the receiver more often: taken as 35 / 45 / 62 mA.
+# - Wi-Fi sleep with the CPU at 80 MHz: the datasheets give 20-31 mA (ESP32) and 22-36 mA (ESP32-S3, idle) at 80 MHz
+#   with the radio off; taken as 22 / 30 / 48 mA.
+ESP_MODES = {
+    "Wi-Fi always on (default)": ESP_MA,
+    "Wi-Fi sleep": {"low": 35, "mid": 45, "high": 62},
+    "Wi-Fi sleep, CPU 80 MHz": {"low": 22, "mid": 30, "high": 48},
+}
 BOARDS = {
     # name: (5 V overhead at the board in mA: USB serial chip, LED, LDO quiescent; regulator efficiency or None for linear)
     "ATOM Lite": {"overhead": 8, "eff": None},       # USB serial chip and LED; regulator taken as linear (upper bound)
@@ -368,6 +379,15 @@ def main():
         for board, v in loads.items():
             hrs = [battery_hours(cap, x) for x in v]
             print(f"{cap} mAh, {board}: {hrs[0]:.1f} / {hrs[1]:.1f} / {hrs[2]:.1f}")
+
+    print("\n## Power-saving settings: mA at 5 V, then hours on 10,000 mAh, low load / mid / high load, x mid vs default")
+    for mode, esp in ESP_MODES.items():
+        for board in BOARDS:
+            v = [supply_ma(board, esp[k], d40["i"]) for k in ("low", "mid", "high")]
+            hrs = [battery_hours(10000, x) for x in v]
+            gain = loads[board][1] / v[1]
+            print(f"{mode}, {board}: " + " / ".join(f"{x:.0f}" for x in v) + " mA; "
+                  + " / ".join(f"{h:.0f}" for h in hrs) + f" h; x{gain:.1f}")
 
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "field-vs-distance.svg").write_text(figure_field(

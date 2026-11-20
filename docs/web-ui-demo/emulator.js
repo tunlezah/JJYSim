@@ -26,7 +26,7 @@ const TZ_CHARS = /^[A-Za-z0-9<>+\-,./:]+$/;
 const NTP_CHARS = /^[A-Za-z0-9.\-]+$/;
 
 const dev = {
-  settings: {freq: 40000, res: 8, tz: 'JST-9', ntp: 'pool.ntp.org'},
+  settings: {freq: 40000, res: 8, tz: 'JST-9', ntp: 'pool.ntp.org', sleep: false, cpu: 240},
   saved: null,          // settings saved from the page, applied at the next boot
   auth: true,           // web_password set
   online: true,         // answering HTTP
@@ -288,6 +288,9 @@ function freqActual(f, res) {
   const steps = 2 ** res;
   return Math.floor(80e6 * 256 / (Math.round(80e6 * 256 / (f * steps)) * steps));
 }
+function settingsText(x) {
+  return x.freq + ' Hz, ' + x.res + ' bits, ' + x.tz + ', ' + x.ntp + ', Wi-Fi sleep ' + (x.sleep ? 'on' : 'off') + ', CPU ' + x.cpu + ' MHz';
+}
 function later(gen, ms, fn) {
   setTimeout(() => { if (gen === dev.gen) fn(); }, ms);
 }
@@ -313,7 +316,8 @@ function boot(reason, portal) {
   statsReset();
   later(gen, 3200, () => {  // after the 3 s delay in setup()
     log('\n');  // Log.println()
-    log('settings: ' + dev.settings.freq + ' Hz, ' + dev.settings.res + ' bits, ' + dev.settings.tz + ', ' + dev.settings.ntp + '\n');
+    log('settings: ' + settingsText(dev.settings) + '\n');
+    log('CPU ' + dev.settings.cpu + ' MHz, APB 80000000 Hz\n');
     log('FastLED add LEDs for ' + BOARD + '\n');
     log('set the localtime temporarily until NTP replies\n');
     dev.clockOffset = Date.UTC(2017, 0, 1) - Date.now();
@@ -331,6 +335,7 @@ function wifiUp(gen) {
   dev.portal = false;
   dev.restarting = false;
   dev.tz = parseTz(dev.settings.tz);
+  log('[WiFi]sleep ' + (dev.settings.sleep ? 'on (modem sleep)' : 'off') + '\n');
   ntpBegin();
   log('ledcAttach result= 1\n');
   log('ledcWrite result= 1\n');
@@ -374,7 +379,8 @@ function status() {
     time_valid: dev.timeValid, last_sync: dev.lastSync, sync_interval: SYNC_INTERVAL,
     tz: dev.settings.tz, ntp: dev.settings.ntp, freq: dev.settings.freq,
     freq_actual: freqActual(dev.settings.freq, dev.settings.res), res: dev.settings.res, pin: PIN,
-    wifi: {status: 'WL_CONNECTED', ssid: SSID, rssi: -56 - Math.round(Math.random() * 5), ip: IP, retries: 0, retry_max: RETRY_MAX},
+    sleep: dev.settings.sleep, cpu: dev.settings.cpu, cpu_now: dev.settings.cpu,
+    wifi: {status: 'WL_CONNECTED', sleep: dev.settings.sleep, ssid: SSID, rssi: -56 - Math.round(Math.random() * 5), ip: IP, retries: 0, retry_max: RETRY_MAX},
     led: {enabled: dev.led, r: 0, g: dev.timeValid ? 0 : 1, b: carrier ? 3 : 0},
     stats: tcoStats,
   };
@@ -405,13 +411,15 @@ function route(method, path, query, headers, body) {
     const res = parseInt(args.get('res'), 10);
     const tz = (args.get('tz') || '').trim();
     const ntp = (args.get('ntp') || '').trim();
+    const sleep = args.get('sleep');
+    const cpu = parseInt(args.get('cpu'), 10);
     // validTz() is the page's own copy of the device's POSIX TZ check (WebUiValidTimeZone())
     if ((freq !== 40000 && freq !== 60000) || ![8, 2, 1].includes(res) || !validText(tz, TZ_CHARS) || !validTz(tz)
-        || !validText(ntp, NTP_CHARS)) {
+        || !validText(ntp, NTP_CHARS) || (sleep !== '0' && sleep !== '1') || ![240, 80].includes(cpu)) {
       return json(400, {ok: false, error: 'invalid'});
     }
-    dev.saved = {freq, res, tz, ntp};
-    log('[Web]settings saved: ' + freq + ' Hz, ' + res + ' bits, ' + tz + ', ' + ntp + ': restarting..\n');
+    dev.saved = {freq, res, tz, ntp, sleep: sleep === '1', cpu};
+    log('[Web]settings saved: ' + settingsText(dev.saved) + ': restarting..\n');
     restart(false);
     return json(200, {ok: true, restart: true});
   }
@@ -458,7 +466,7 @@ window.fetch = function (input, init) {
       if (!answering()) return hang();
       runTco();
       resolve(route(method, url.pathname, url.searchParams, headers, init.body));
-    }, 25 + Math.random() * 45);
+    }, 25 + Math.random() * 45 + (dev.settings.sleep ? Math.random() * 102.4 : 0));  // Wi-Fi sleep: up to one beacon
   });
 };
 
