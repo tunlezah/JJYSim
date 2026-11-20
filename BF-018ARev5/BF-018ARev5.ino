@@ -6,6 +6,7 @@
 #include <FastLED.h>      // https://github.com/FastLED/FastLED
 #include <Ticker.h>
 #include <WiFi.h>
+#include <esp_wifi.h>
 #include <WiFiManager.h>  // https://github.com/tzapu/WiFiManager
 #include <esp_timer.h>
 #include "BF_Log.h"
@@ -19,6 +20,8 @@ WebUiSettings settings = {
   "JST-9",         // time_zone
   "pool.ntp.org",  // ntp_server
   8,               // carrier_resolution: LEDC duty resolution in bits, 8, 2 or 1 (see TcoInit())
+  false,           // wifi_sleep: power saving, Wi-Fi modem sleep (see setup())
+  240,             // cpu_mhz: power saving, CPU clock 240 or 80 MHz (see setup())
 };
 
 //..:....1....:....2....:....3....:....4....:....5....:....6....:....7..
@@ -190,6 +193,13 @@ void WifiCheck()
     ESP.restart();
     return;
   };
+}
+
+// Wi-Fi power saving as the driver has it, not just as asked for
+bool WifiSleeping()
+{
+  wifi_ps_type_t ps(WIFI_PS_NONE);
+  return esp_wifi_get_ps(&ps) == ESP_OK && ps != WIFI_PS_NONE;
 }
 
 void WifiConfigModeCallback(WiFiManager *wm)
@@ -564,7 +574,9 @@ void WebUiStatusJson(Print &out)
   WebUiJsonString(out, settings.ntp_server);
   out.printf(",\"freq\":%lu,\"freq_actual\":%lu,\"res\":%u,\"pin\":%u",
              (unsigned long)settings.jjy_frequency, (unsigned long)ledc_frequency, settings.carrier_resolution, ledc_pin);
-  out.printf(",\"wifi\":{\"status\":\"%s\",\"ssid\":", WlStatus(wifi_status));
+  out.printf(",\"sleep\":%s,\"cpu\":%u,\"cpu_now\":%lu",  // the power-saving settings, and the CPU clock running now
+             settings.wifi_sleep ? "true" : "false", settings.cpu_mhz, (unsigned long)getCpuFrequencyMhz());
+  out.printf(",\"wifi\":{\"status\":\"%s\",\"sleep\":%s,\"ssid\":", WlStatus(wifi_status), WifiSleeping() ? "true" : "false");
   WebUiJsonString(out, WiFi.SSID().c_str());
   out.printf(",\"rssi\":%d,\"ip\":\"%s\",\"retries\":%d,\"retry_max\":%d}",
              WiFi.RSSI(), WiFi.localIP().toString().c_str(), wifi_retry_times, wifi_retry_max_times);
@@ -600,6 +612,19 @@ const int button_atoms3(41);  // GPIO41
 
 void setup()
 {
+  // settings saved from the web UI: read first, because the CPU clock is set before anything else starts
+  WebUiLoadSettings(&settings);
+
+  // Power saving: the CPU clock, 240MHz (default) or 80MHz (settings.cpu_mhz).
+  // At 80MHz and above the APB clock stays at 80MHz, so everything that runs from it or from the crystal works exactly
+  // as at 240MHz: the LEDC carrier (APB, REF_TICK or XTAL, see TcoInit()), the UART baud rate, the RMT that drives the
+  // LED, and esp_timer, which runs the Ticker, millis() and the system clock. Below 80MHz the APB clock would follow
+  // the CPU and change the carrier, and Wi-Fi would stop, so 80MHz is the lowest setting.
+  // Set here, before any peripheral starts: on the ESP32 (ATOM Lite/Matrix), going from 240 to 80MHz stops and
+  // restarts the PLL (240MHz comes from a 480MHz PLL, 80MHz from a 320MHz one), which would upset a running UART,
+  // Wi-Fi or carrier. On the ESP32-S3 (ATOMS3 Lite) only a divider changes. The web UI applies it with a restart.
+  bool cpu_set = setCpuFrequencyMhz(settings.cpu_mhz);
+
   // Wi-Fi issue caused by the CH552 on ATOM Lite/Matrix: M5.begin() applies M5Unified's own countermeasure
   // (it drives GPIO0 HIGH), so the Rev.2 workaround of driving GPIO0 LOW is not needed here.
   // https://twitter.com/wakwak_koba/status/1553162622479974400
@@ -627,10 +652,11 @@ void setup()
   Log.Begin();  // this task (setup() and loop()) writes the log to Serial; the Ticker only adds to the log's buffer
   Log.println();
 
-  // settings saved from the web UI
-  WebUiLoadSettings(&settings);
-  Log.printf("settings: %lu Hz, %u bits, %s, %s\n", (unsigned long)settings.jjy_frequency, settings.carrier_resolution,
-             settings.time_zone, settings.ntp_server);
+  Log.printf("settings: %lu Hz, %u bits, %s, %s, Wi-Fi sleep %s, CPU %u MHz\n", (unsigned long)settings.jjy_frequency,
+             settings.carrier_resolution, settings.time_zone, settings.ntp_server, settings.wifi_sleep ? "on" : "off",
+             settings.cpu_mhz);
+  Log.printf("CPU %lu MHz, APB %lu Hz%s\n", (unsigned long)getCpuFrequencyMhz(), (unsigned long)getApbFrequency(),
+             cpu_set ? "" : " (could not set the CPU clock)");
 
   // FastLED
 #if defined (CONFIG_IDF_TARGET_ESP32S3)  // FastLED requires strict constant for the pin number 
@@ -680,7 +706,15 @@ void setup()
   wm.setAPCallback(WifiConfigModeCallback);
   wm.setHostname(web_hostname);  // the name the router shows
   wm.autoConnect();
-  WiFi.setSleep(false);  // https://macsbug.wordpress.com/2021/05/02/buttona-on-m5stack-does-not-work-properly/
+  // Power saving: Wi-Fi modem sleep (settings.wifi_sleep).
+  // Off (default): the receiver stays on. The web UI answers at once, and the button on the ATOM Lite/Matrix (GPIO39)
+  // can't pick up the false presses that Wi-Fi sleep can cause there (ESP32 erratum 3.11):
+  // https://macsbug.wordpress.com/2021/05/02/buttona-on-m5stack-does-not-work-properly/
+  // On: the receiver wakes only for the access point's beacons, which roughly halves the power. The device stays
+  // connected, so the web UI and mDNS still work, but each reply can wait up to one beacon interval (about 0.1s).
+  // The time code doesn't use Wi-Fi between NTP syncs. The ATOMS3 Lite button (GPIO41) is not affected by the erratum.
+  WiFi.setSleep(settings.wifi_sleep);
+  Log.printf("[WiFi]sleep %s\n", WifiSleeping() ? "on (modem sleep)" : "off");
   wifi_retry_last_ms = millis() - wifi_retry_interval_ms;
 
   // NTP start

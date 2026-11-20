@@ -165,6 +165,11 @@ static bool ValidResolution(uint32_t bits)
   return bits == 8 || bits == 2 || bits == 1;
 }
 
+static bool ValidCpuMhz(uint32_t mhz)
+{
+  return mhz == 240 || mhz == 80;  // not below 80: Wi-Fi needs it, and the carrier's clock would change (see setup())
+}
+
 static bool ValidText(const String &s, size_t max_length, const char *extra_chars)
 {
   if (s.length() == 0 || s.length() >= max_length) {
@@ -201,10 +206,16 @@ void WebUiLoadSettings(WebUiSettings *settings)
   if (ValidText(ntp_server, sizeof(settings->ntp_server), ntp_chars)) {
     strlcpy(settings->ntp_server, ntp_server.c_str(), sizeof(settings->ntp_server));
   }
+  settings->wifi_sleep = prefs.getBool("sleep", settings->wifi_sleep);
+  uint8_t cpu_mhz = prefs.getUChar("cpu", settings->cpu_mhz);
+  if (ValidCpuMhz(cpu_mhz)) {
+    settings->cpu_mhz = cpu_mhz;
+  }
   prefs.end();
 }
 
-static bool SaveSettings(uint32_t frequency, uint8_t resolution, const String &time_zone, const String &ntp_server)
+static bool SaveSettings(uint32_t frequency, uint8_t resolution, const String &time_zone, const String &ntp_server,
+                         bool wifi_sleep, uint8_t cpu_mhz)
 {
   Preferences prefs;
   if (!prefs.begin(prefs_namespace, false)) {
@@ -213,7 +224,9 @@ static bool SaveSettings(uint32_t frequency, uint8_t resolution, const String &t
   bool saved = prefs.putUInt("freq", frequency) == sizeof(frequency)
             && prefs.putUChar("res", resolution) == sizeof(resolution)
             && prefs.putString("tz", time_zone) == time_zone.length()
-            && prefs.putString("ntp", ntp_server) == ntp_server.length();
+            && prefs.putString("ntp", ntp_server) == ntp_server.length()
+            && prefs.putBool("sleep", wifi_sleep) == 1
+            && prefs.putUChar("cpu", cpu_mhz) == sizeof(cpu_mhz);
   prefs.end();
   return saved;
 }
@@ -292,20 +305,24 @@ static void HandleSettings()
   uint32_t resolution = server.arg("res").toInt();
   String time_zone    = server.arg("tz");
   String ntp_server  = server.arg("ntp");
+  String wifi_sleep  = server.arg("sleep");
+  uint32_t cpu_mhz    = server.arg("cpu").toInt();
   time_zone.trim();
   ntp_server.trim();
   if ((frequency != 40000 && frequency != 60000) || !ValidResolution(resolution) ||
       !ValidText(time_zone, sizeof(WebUiSettings::time_zone), tz_chars) || !WebUiValidTimeZone(time_zone.c_str()) ||
-      !ValidText(ntp_server, sizeof(WebUiSettings::ntp_server), ntp_chars)) {
+      !ValidText(ntp_server, sizeof(WebUiSettings::ntp_server), ntp_chars) ||
+      (wifi_sleep != "0" && wifi_sleep != "1") || !ValidCpuMhz(cpu_mhz)) {
     SendJson(400, "{\"ok\":false,\"error\":\"invalid\"}");
     return;
   }
-  if (!SaveSettings(frequency, resolution, time_zone, ntp_server)) {
+  if (!SaveSettings(frequency, resolution, time_zone, ntp_server, wifi_sleep == "1", cpu_mhz)) {
     SendJson(500, "{\"ok\":false,\"error\":\"not saved\"}");
     return;
   }
-  Log.printf("[Web]settings saved: %lu Hz, %lu bits, %s, %s: restarting..\n", (unsigned long)frequency, (unsigned long)resolution,
-             time_zone.c_str(), ntp_server.c_str());
+  Log.printf("[Web]settings saved: %lu Hz, %lu bits, %s, %s, Wi-Fi sleep %s, CPU %lu MHz: restarting..\n",
+             (unsigned long)frequency, (unsigned long)resolution, time_zone.c_str(), ntp_server.c_str(),
+             wifi_sleep == "1" ? "on" : "off", (unsigned long)cpu_mhz);
   SendJson(200, "{\"ok\":true,\"restart\":true}");
   Schedule(pending_restart);
 }

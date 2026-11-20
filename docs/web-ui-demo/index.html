@@ -221,6 +221,7 @@ pre{margin:0;max-height:20em;overflow:auto;background:#0b0d0f;border:1px solid v
 <dt>Status</dt><dd id="wifiStatus">-</dd>
 <dt>Network</dt><dd id="wifiSsid">-</dd>
 <dt>Signal</dt><dd id="wifiRssi">-</dd>
+<dt>Power saving</dt><dd id="wifiSleep">-</dd>
 <dt>Address</dt><dd id="wifiIp">-</dd>
 <dt>Reconnect attempts</dt><dd id="wifiRetries">-</dd>
 </dl>
@@ -240,6 +241,7 @@ pre{margin:0;max-height:20em;overflow:auto;background:#0b0d0f;border:1px solid v
 <dl class="kv">
 <dt>Board</dt><dd id="devBoard">-</dd>
 <dt>Antenna output</dt><dd id="devPin">-</dd>
+<dt>CPU</dt><dd id="devCpu">-</dd>
 <dt>Uptime</dt><dd id="devUptime">-</dd>
 <dt>Last restart</dt><dd id="devReset">-</dd>
 <dt>Free memory</dt><dd id="devHeap">-</dd>
@@ -279,6 +281,12 @@ pre{margin:0;max-height:20em;overflow:auto;background:#0b0d0f;border:1px solid v
 <label for="ntp">NTP server</label>
 <input id="ntp" type="text" maxlength="63" autocomplete="off" spellcheck="false">
 </div>
+<fieldset>
+<legend>Power saving</legend>
+<label class="opt"><input id="optSleep" type="checkbox"><span><b>Wi-Fi sleep</b><small>The receiver wakes only for the router's beacons. Roughly halves the power; this page answers a little more slowly.</small></span></label>
+<label class="opt"><input id="optCpu" type="checkbox"><span><b>CPU at 80 MHz</b><small>Instead of 240 MHz. The carrier frequency and the signal timing stay the same.</small></span></label>
+<span id="pwrNote" class="sub"></span>
+</fieldset>
 <div class="row">
 <button id="btnSave" type="submit" class="btn primary" disabled>Save and restart</button>
 <span id="setNote" class="sub"></span>
@@ -663,6 +671,7 @@ function renderStatus() {
   $('wifiRssi').textContent = w.rssi ? '−' + Math.abs(w.rssi) + ' dBm · ' + (w.rssi >= -55 ? 'excellent' : w.rssi >= -67 ? 'good' : w.rssi >= -75 ? 'fair' : 'weak') : '-';
   $('wifiIp').textContent = w.ip;
   $('wifiRetries').textContent = w.retries + ' of ' + w.retry_max;
+  $('wifiSleep').textContent = w.sleep ? 'Wi-Fi sleep' : 'Off · always listening';
 
   $('timeSource').textContent = s.last_sync ? 'NTP' : 'None yet';
   $('timeServer').textContent = s.ntp;
@@ -674,6 +683,7 @@ function renderStatus() {
   $('devPin').textContent = 'GPIO' + s.pin + ' · ' + kHz + (s.freq_actual && s.freq_actual !== s.freq ? ' (' + num(s.freq_actual) + ' Hz)' : '')
     + (s.res !== 8 ? ' · ' + s.res + '-bit' : '');
   $('devUptime').textContent = (days ? days + ' d ' : '') + p2(Math.floor(up % 86400 / 3600)) + ':' + p2(Math.floor(up % 3600 / 60)) + ':' + p2(up % 60);
+  $('devCpu').textContent = s.cpu_now + ' MHz' + (s.cpu_now !== s.cpu ? ' (setting: ' + s.cpu + ' MHz)' : '');
   $('devReset').textContent = s.reset;
   $('devHeap').textContent = num(Math.round(s.heap / 1024)) + ' KB';
   $('forgetText').textContent = 'Forget ' + (w.ssid || 'this network') + '? The simulator restarts into its setup hotspot, '
@@ -706,6 +716,8 @@ function renderStatus() {
     $('tzCustom').hidden = preset;
     $('tzCustom').value = s.tz;
     $('ntp').value = s.ntp;
+    $('optSleep').checked = !!s.sleep;
+    $('optCpu').checked = s.cpu === 80;
   }
   renderControls();
 }
@@ -714,14 +726,16 @@ function renderStatus() {
 function formValues() {
   const checked = document.querySelector('input[name=freq]:checked');
   const tz = $('tzSel').value || $('tzCustom').value.trim();
-  return {freq: checked ? Number(checked.value) : 0, res: Number($('resSel').value), tz, ntp: $('ntp').value.trim()};
+  return {freq: checked ? Number(checked.value) : 0, res: Number($('resSel').value), tz, ntp: $('ntp').value.trim(),
+    sleep: $('optSleep').checked, cpu: $('optCpu').checked ? 80 : 240};
 }
 
 function renderForm() {
   const f = formValues();
   const tzOk = validTz(f.tz);
   const valid = (f.freq === 40000 || f.freq === 60000) && RESOLUTIONS.some(r => r[0] === f.res) && tzOk && NTP_CHARS.test(f.ntp);
-  const changed = st && (f.freq !== st.freq || f.res !== st.res || f.tz !== st.tz || f.ntp !== st.ntp);
+  const changed = st && (f.freq !== st.freq || f.res !== st.res || f.tz !== st.tz || f.ntp !== st.ntp
+    || f.sleep !== st.sleep || f.cpu !== st.cpu);
   $('tzValue').textContent = f.tz || '-';
   const freq = f.freq || 40000;
   RESOLUTIONS.forEach(([bits, label, note], i) => {
@@ -733,6 +747,11 @@ function renderForm() {
     ? '40 kHz comes out exact at every setting. This only matters at 60 kHz.'
     : 'If a clock won\'t sync at 60 kHz, try 2-bit or 1-bit: they bring the carrier within a fraction of a hertz of 60 kHz. '
       + 'The duty stays at 50%, so the signal strength is the same.';
+  const atom = !!st && /^ATOM (Lite|Matrix)$/.test(st.board);  // ESP32: its button can glitch while Wi-Fi sleeps
+  $('pwrNote').textContent = 'For running on a battery; both are off by default. Estimated battery life: about 2.5 times '
+    + 'longer with Wi-Fi sleep, about 3.5 times with both (not measured). '
+    + (atom && f.sleep ? 'On the ' + st.board + ', Wi-Fi sleep may make the button switch the LED monitor by itself. ' : '')
+    + 'Some power banks switch off at such a low current.';
   $('btnSave').disabled = !st || !st.auth || isLost() || !valid || !changed;
   $('setNote').textContent = !st ? '' : !st.auth ? 'Read-only: set web_password in the sketch to allow changes.'
     : !tzOk ? 'The time zone is not a POSIX TZ string the simulator can use, e.g. JST-9 or CET-1CEST,M3.5.0,M10.5.0/3.'
@@ -779,7 +798,7 @@ $('setForm').addEventListener('submit', async e => {
   const f = formValues();
   $('btnSave').disabled = true;
   try {
-    const r = await post('/api/settings', f);
+    const r = await post('/api/settings', Object.assign({}, f, {sleep: f.sleep ? '1' : '0'}));
     if (r.ok) {
       formDirty = false;
       restarting = Date.now();
